@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>親親小鎮</title>
+    <!--
+      在 Discord 裡開啟時（網址含 .discordsays.com），所有相對路徑要加上 .proxy/ 前綴，
+      Discord 的 URL Mapping 代理才會轉送。本機直接開 localhost 時不加。
+    -->
+    <script type="text/javascript">
+      if (window.location.href.includes(".discordsays.com")) {
+        document.write('<base href=".proxy/" />');
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
