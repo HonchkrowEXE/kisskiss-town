@@ -1,0 +1,20 @@
+{
+  "name": "kisskiss-town",
+  "private": true,
+  "version": "1.0.0",
+  "description": "親親小鎮：在 Discord 裡逛的 2D 像素小鎮",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "start:server": "npm start -w server",
+    "start:client": "npm start -w client",
+    "cloudflared": "cloudflared tunnel --url http://localhost:5173"
+  },
+  "author": "HonchkrowEXE",
+  "license": "MIT",
+  "devDependencies": {
+    "cloudflared": "^0.7.0"
+  },
+  "engines": { "node": ">=22" }
+}
