@@ -35,6 +35,8 @@
 
 ## 參與開發
 
+完整流程（安裝 Matt skills、認領票、開 PR）見 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
 1. 先讀 [`GLOSSARY.md`](GLOSSARY.md)：專案的名詞表，寫 issue、程式、文件時都用這裡定義的詞
 2. 再讀 [`docs/adr/`](docs/adr/)：已經做過的設計決定和理由，想推翻某個決定時請先開 issue 討論
 3. 到 [Issues](../../issues) 找標著 `ready-for-human` 或 `ready-for-agent` 的票
