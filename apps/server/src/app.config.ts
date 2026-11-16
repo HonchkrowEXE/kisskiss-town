@@ -1,5 +1,6 @@
 import { defineServer, defineRoom, monitor, playground, JWT } from "colyseus";
 import express from "express";
+import { loginWithDiscord } from "./auth/discordLogin.js";
 
 /**
  * Import your Room files
@@ -26,60 +27,29 @@ export default defineServer({
         // Discord Embedded SDK: Retrieve user token when under Discord/Embed
         //
         app.post('/discord_token', async (req, res) => {
-          //
-          // TODO: remove this on production
-          //
-          if (req.body.code === "mock_code") {
-            const user = {
-              id: Math.random().toString(36).slice(2, 10),
-              username: `User ${Math.random().toString().slice(2, 10)}`,
-            }
+          const { code, guildId } = req.body ?? {};
+          if (typeof code !== "string" || typeof guildId !== "string") {
+            res.status(400).send({ error: "缺少 code 或 guildId" });
+            return;
+          }
+
+          // 本機在一般瀏覽器測試用的假登入：要在 .env.development 明確打開才有效
+          if (code === "mock_code" && process.env.ALLOW_MOCK_LOGIN === "true") {
+            const id = Math.random().toString(36).slice(2, 10);
+            const user = { id, name: `測試員 ${id}`, guildId };
             res.send({ access_token: "mocked", token: await JWT.sign(user), user });
             return;
           }
 
           try {
-            //
-            // Retrieve access token from Discord API
-            //
-            const response = await fetch(`https://discord.com/api/oauth2/token`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-              },
-              body: new URLSearchParams({
-                client_id: process.env.DISCORD_CLIENT_ID,
-                client_secret: process.env.DISCORD_CLIENT_SECRET,
-                code: req.body.code,
-                grant_type: 'authorization_code',
-              }),
+            const { accessToken, user } = await loginWithDiscord(code, guildId, {
+              fetch,
+              clientId: process.env.DISCORD_CLIENT_ID,
+              clientSecret: process.env.DISCORD_CLIENT_SECRET,
             });
-
-            const { access_token } = await response.json();
-
-            //
-            // Retrieve user data from Discord API
-            // https://discord.com/developers/docs/resources/user#user-object
-            //
-            const profile = await (await fetch(`https://discord.com/api/users/@me`, {
-              method: "GET",
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Bearer ${access_token}`,
-              }
-            })).json();
-
-            // TODO: store user profile into a database
-            const user = profile;
-
-            res.send({
-              access_token, // Discord Access Token
-              token: await JWT.sign(user), // Colyseus JWT token
-              user // User data
-            });
-
-          } catch (e: any) {
-            res.status(400).send({ error: e.message });
+            res.send({ access_token: accessToken, token: await JWT.sign(user), user });
+          } catch (e) {
+            res.status(400).send({ error: e instanceof Error ? e.message : "登入失敗" });
           }
         });
 
