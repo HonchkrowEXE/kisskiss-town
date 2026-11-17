@@ -1,6 +1,6 @@
 # 全部用 TypeScript，Phaser + Colyseus，從官方範本起步
 
-前端、遊戲伺服器、bot 都用 TypeScript：Phaser（畫面）、Colyseus（多人連線伺服器）、@discord/embedded-app-sdk、discord.js，授權都是 MIT 或 Apache-2.0。專案從 Colyseus 官方的 Discord Activity 範本（github.com/colyseus/discord-activity）起步，那份範本已經示範了 WebSocket 怎麼通過 Discord 的代理。
+前端、遊戲伺服器、bot 都用 TypeScript：Phaser（畫面）、Colyseus（多人連線伺服器）、@discord/embedded-app-sdk、discord.js，授權都是 MIT 或 Apache-2.0。專案從 Colyseus 官方的 Discord Activity 範本（github.com/colyseus/discord-activity）起步，那份範本已經示範了 WebSocket 怎麼通過 Discord 的代理。實際只沿用範本的伺服器；範本前端用 Pixi，我們的前端改用 Phaser 自己寫。
 
 ## Considered Options
 

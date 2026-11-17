@@ -4,7 +4,7 @@
 
 在 Discord 裡逛一座像素小鎮。每個伺服器都有一座自己的小鎮，地圖上的每個房間對應一個 Discord 頻道：走進語音房就切到那個語音頻道，走進文字房就能看到並回覆那個頻道的訊息。
 
-> 🚧 **規劃階段**：目前還沒有程式碼，這個 repo 先放規格和設計決策。想參與的話，從下面「參與開發」開始讀。
+> 🚧 **開發初期**：目前做到「在 Discord 裡打開，看到地圖和自己的名字」。想參與的話，從下面「參與開發」開始讀。
 
 ## 第一版要做什麼
 
@@ -32,6 +32,86 @@
 | 照片特徵判斷 | Claude API |
 
 全部用 TypeScript。為什麼這樣選，見 [`docs/adr/`](docs/adr/)。
+
+## 本機開發
+
+需要 Node.js 22 以上。
+
+```
+apps/
+  server/   遊戲伺服器（Colyseus），port 2567
+  client/   Activity 前端（Vite + Phaser），port 5173
+```
+
+### 1. 安裝與設定
+
+```bash
+npm install
+cp apps/server/.env.example apps/server/.env.development
+cp apps/client/.env.example apps/client/.env
+```
+
+打開 `apps/server/.env.development`：
+
+- `JWT_SECRET`：換成一串隨機字，例如 `node -e "console.log(crypto.randomUUID())"` 的輸出
+- `ALLOW_MOCK_LOGIN`：改成 `true`，才能在一般瀏覽器測試（見下一步）
+
+`DISCORD_CLIENT_ID`、`DISCORD_CLIENT_SECRET`、`VITE_DISCORD_CLIENT_ID` 要到「在 Discord 裡測試」才需要填。
+
+### 2. 在一般瀏覽器測試（不用 Discord）
+
+開兩個終端機：
+
+```bash
+npm run start:server
+npm run start:client
+```
+
+打開 <http://localhost:5173>。不在 Discord 裡時，前端會改用模擬的 Discord SDK，伺服器用假登入給你一個「測試員」名字。
+
+- 多開幾個分頁，會進到同一座小鎮
+- 網址加 `?guild_id=123`，模擬另一個伺服器的小鎮
+
+### 3. 跑測試
+
+```bash
+npm test -w server
+```
+
+## 在 Discord 裡測試
+
+每位開發者用自己的 Discord 應用程式測試，或請擁有者把你加進應用程式的 Team。開發中的 Activity 只有應用程式擁有者和 Team 成員看得到。
+
+### Discord 開發者後台設定（一次就好）
+
+到 [Discord Developer Portal](https://discord.com/developers/applications) 建一個應用程式，然後：
+
+- [ ] **OAuth2 → Redirects**：填 `https://127.0.0.1`。只是佔位值，SDK 會自己處理授權後的跳轉
+- [ ] **OAuth2**：複製 Client ID 和 Client Secret
+  - Client ID 填進 `apps/server/.env.development` 的 `DISCORD_CLIENT_ID`，以及 `apps/client/.env` 的 `VITE_DISCORD_CLIENT_ID`
+  - Client Secret 填進 `apps/server/.env.development` 的 `DISCORD_CLIENT_SECRET`。**不要 commit、不要貼到任何地方**
+- [ ] **Activities → Settings**：勾 `Enable Activities`，Supported Platforms 勾你要測的平台
+- [ ] **Activities → URL Mappings**：等下一節拿到網址再填
+
+Discord App 也要打開開發者模式：使用者設定 → 進階 → `開發者模式`。
+
+### 每次測試
+
+開三個終端機：
+
+```bash
+npm run start:server
+npm run start:client
+npm run cloudflared
+```
+
+1. 從 `cloudflared` 的輸出複製 `https://xxxx.trycloudflare.com` 網址
+2. 到 **Activities → URL Mappings**，PREFIX `/` 的 TARGET 填這個網址（不含 `https://`）。這個網址每次重開 `cloudflared` 都會變，所以每次都要重填
+3. 在 Discord 的測試伺服器進語音頻道，點火箭圖示打開 Activity 清單，選你的應用程式
+
+只要一條 URL Mapping 就夠：伺服器的請求走 `/colyseus`，由 Vite 轉給本機的 2567。
+
+步驟出處：Discord 官方的 [Building an Activity](https://discord.com/developers/docs/activities/building-an-activity) 和 [Local Development](https://discord.com/developers/docs/activities/development-guides/local-development)。
 
 ## 參與開發
 
