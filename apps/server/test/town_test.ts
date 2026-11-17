@@ -1,7 +1,8 @@
 import assert from "assert";
-import { ColyseusTestServer, boot } from "@colyseus/testing";
+import type { ColyseusTestServer } from "@colyseus/testing";
 import { JWT } from "colyseus";
-import appConfig from "../src/app.config.js";
+import type appConfig from "../src/app.config.js";
+import { testServer } from "./testServer.js";
 
 const GUILD_A = "9000000000000000001";
 const GUILD_B = "9000000000000000002";
@@ -9,8 +10,7 @@ const GUILD_B = "9000000000000000002";
 describe("小鎮房間", () => {
   let colyseus: ColyseusTestServer<typeof appConfig>;
 
-  before(async () => (colyseus = await boot(appConfig)));
-  after(async () => colyseus.shutdown());
+  before(async () => (colyseus = await testServer()));
   beforeEach(async () => colyseus.cleanup());
 
   /** 用某個成員的身分（登入時簽好的 JWT）進入某座小鎮。 */
