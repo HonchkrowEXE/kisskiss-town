@@ -1,15 +1,20 @@
-import { Room, Client, CloseCode, JWT } from "colyseus";
+import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
+import type { TownUser } from "../auth/discordLogin.js";
 import { MyRoomState, Player, Vec2 } from "./schema/MyRoomState.js";
 
 export class MyRoom extends Room<{
   state: MyRoomState,
-  metadata: { channelId: string }, // matchmaking filter, see app.config.ts
+  metadata: { guildId: string }, // matchmaking filter, see app.config.ts
 }> {
   state = new MyRoomState();
-  maxClients = 4;
 
-  static onAuth(token: string) {
-    return JWT.verify(token);
+  static async onAuth(token: string, options: { guildId?: string }) {
+    const user = await JWT.verify<TownUser>(token);
+    // guildId 是前端傳來的，不可信；要跟登入時向 DC 驗證過、簽進 JWT 的一致
+    if (options.guildId !== user.guildId) {
+      throw new ServerError(403, "不能進其他伺服器的小鎮");
+    }
+    return user;
   }
 
   onCreate (options: any) {
@@ -23,7 +28,7 @@ export class MyRoom extends Room<{
   onJoin (client: Client, options: any) {
     console.log(client.sessionId, "joined!");
     this.state.players.set(client.sessionId, new Player({
-      username: client.auth?.username || "Guest",
+      name: client.auth.name,
       heroType: Math.floor(Math.random() * 12) + 1,
       position: new Vec2({
         x: Math.floor(Math.random() * 100),

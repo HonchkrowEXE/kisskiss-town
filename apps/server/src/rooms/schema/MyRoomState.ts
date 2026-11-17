@@ -7,7 +7,7 @@ export const Vec2 = schema({
 export type Vec2 = SchemaType<typeof Vec2>;
 
 export const Player = schema({
-  username: t.string(),
+  name: t.string(),
   heroType: t.number(), // sprite to use (1-12)
   position: Vec2,
 }, "Player");
