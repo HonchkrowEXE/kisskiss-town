@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16" shape-rendering="crispEdges">
+  <!-- 第 1 格：地板 -->
+  <rect x="0" y="0" width="16" height="16" fill="#8fbf7f"/>
+  <rect x="3" y="4" width="1" height="1" fill="#7aa86b"/>
+  <rect x="11" y="10" width="1" height="1" fill="#7aa86b"/>
+  <!-- 第 2 格：牆 -->
+  <rect x="16" y="0" width="16" height="16" fill="#6b5a4e"/>
+  <rect x="16" y="7" width="16" height="1" fill="#54463d"/>
+  <rect x="23" y="0" width="1" height="7" fill="#54463d"/>
+  <rect x="19" y="8" width="1" height="8" fill="#54463d"/>
+</svg>
