@@ -40,6 +40,7 @@ export class TextPanel {
 
         room.onMessage("textRoom", (panel: Panel) => this.open(panel));
         room.onMessage("textMessage", (m: { channelId: string; message: TownMessage }) => m.channelId === this.channelId && this.add(m.message));
+        room.onMessage("textDeleted", (m: { channelId: string; messageId: string }) => m.channelId === this.channelId && this.remove(m.messageId));
         room.onMessage("textResult", (r: { message: string }) => (this.result.textContent = r.message));
 
         this.element.querySelector("form")!.addEventListener("submit", (e) => {
@@ -75,9 +76,17 @@ export class TextPanel {
     private add(message: TownMessage) {
         // 名字和內容都是成員寫的，一律用 textContent
         const item = document.createElement("li");
+        item.dataset.id = message.id;
         item.append(Object.assign(document.createElement("b"), { textContent: message.author }), `：${message.content}`);
         this.list.append(item);
         while (this.list.children.length > KEEP) this.list.firstElementChild!.remove();
         this.list.scrollTop = this.list.scrollHeight;
+    }
+
+    /** 在 Discord 被刪掉的訊息，從畫面上拿掉。 */
+    private remove(messageId: string) {
+        for (const item of [...this.list.children]) {
+            if ((item as HTMLElement).dataset.id === messageId) item.remove();
+        }
     }
 }

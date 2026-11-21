@@ -32,11 +32,10 @@ try {
 
     new Phaser.Game({
         parent: app,
-        width: 960, // 地圖 320×240（20×15 格，每格 16px）放大 3 倍，文字才清楚
-        height: 720,
         pixelArt: true, // 放大時不模糊，保持像素感
         backgroundColor: "#000",
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        // 畫布填滿視窗、跟著視窗改大小；放大倍率由 TownScene 依畫面大小決定
+        scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
         scene: new TownScene(room, touch.stick),
     });
 } catch (e) {
