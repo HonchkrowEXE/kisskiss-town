@@ -21,6 +21,11 @@ export class MemberSettings {
         `);
     }
 
+    /** 這位成員有沒有存過外觀（第一次進小鎮的人沒有，要先捏角色）。 */
+    hasAppearance(member: ChipOwner): boolean {
+        return !!this.db.prepare("SELECT 1 FROM member_looks WHERE guild_id = ? AND user_id = ?").get(member.guildId, member.userId);
+    }
+
     /** 角色外觀；沒設定過（或存的部件已經不存在）用預設。 */
     appearance(member: ChipOwner): Appearance {
         const row = this.db
