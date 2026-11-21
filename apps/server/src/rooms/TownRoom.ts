@@ -63,6 +63,8 @@ export class TownRoom extends Room<{
   private rounds = new Map<string, DiceRound>();
   /** 每位成員上次在文字房發言的時間，key 是帳號 ID。 */
   private lastSayAt = new Map<string, number>();
+  /** 誰正在看哪個文字頻道（讀得到、面板開著），key 是 sessionId。新訊息只送給這些人。 */
+  private reading = new Map<string, string>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -103,10 +105,10 @@ export class TownRoom extends Room<{
     this.stopWatching = [
       platform().onChannelsChanged(options.guildId, refresh),
       platform().onVoiceChanged(options.guildId, refreshVoice),
-      // 文字頻道的新訊息，送給正站在那間文字房裡的人
+      // 文字頻道的新訊息，送給正在看那個頻道的人（讀得到才算；語音頻道的文字聊天不會送）
       platform().onMessage(options.guildId, (channelId, message) => {
         for (const client of this.clients) {
-          if (this.currentRoom.get(client.sessionId) === channelId) client.send("textMessage", { channelId, message });
+          if (this.reading.get(client.sessionId) === channelId) client.send("textMessage", { channelId, message });
         }
       }),
     ];
@@ -232,6 +234,7 @@ export class TownRoom extends Room<{
     const before = this.currentRoom.get(sessionId);
     if (before === room?.id) return false;
     this.currentRoom.set(sessionId, room?.id);
+    this.reading.delete(sessionId);
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client && room?.kind === "text") void this.openTextRoom(client, room);
     else if (client && before !== undefined) client.send("textRoom", null);
@@ -243,8 +246,10 @@ export class TownRoom extends Room<{
     const send = (messages: unknown[], notice: string | null) =>
       client.send("textRoom", { channelId: room.id, name: room.name, messages, notice });
     try {
-      const messages = await platform().recentMessages(client.auth.guildId, room.id);
-      if (this.currentRoom.get(client.sessionId) === room.id) send(messages, null);
+      const messages = await platform().recentMessages(client.auth.guildId, room.id, client.auth.id);
+      if (this.currentRoom.get(client.sessionId) !== room.id) return;
+      this.reading.set(client.sessionId, room.id);
+      send(messages, null);
     } catch (e) {
       if (this.currentRoom.get(client.sessionId) !== room.id) return;
       if (e instanceof TextRefused) send([], e.message);
@@ -499,6 +504,7 @@ export class TownRoom extends Room<{
     this.state.characters.delete(client.sessionId);
     this.moveMeters.delete(client.sessionId);
     this.currentRoom.delete(client.sessionId);
+    this.reading.delete(client.sessionId);
   }
 
   onDispose() {

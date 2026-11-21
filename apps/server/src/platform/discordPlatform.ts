@@ -132,14 +132,23 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
     function webhookFor(channel: TextChannel | NewsChannel) {
         let hook = webhooks.get(channel.id);
         if (!hook) {
-            hook = channel
+            const created = channel
                 .fetchWebhooks()
                 .then((list) => list.find((w) => w.owner?.id === client.user?.id && w.token) ?? channel.createWebhook({ name: "親親小鎮" }));
-            hook.catch(() => webhooks.delete(channel.id)); // 失敗了下次重新找
-            webhooks.set(channel.id, hook);
+            created.catch(() => forgetWebhook(channel.id, created)); // 失敗了下次重新找
+            webhooks.set(channel.id, (hook = created));
         }
         return hook;
     }
+    /** 只在快取裡還是同一個 webhook 時才忘掉，兩個請求同時失敗也只會重建一個。 */
+    function forgetWebhook(channelId: string, hook: Promise<Webhook>) {
+        if (webhooks.get(channelId) === hook) webhooks.delete(channelId);
+    }
+    /** 每位成員在有慢速模式的頻道上次發言的時間，key 是「頻道 ID:帳號 ID」。 */
+    const lastSent = new Map<string, number>();
+    /** 成員現在的資料：直接問 Discord，不用快取（沒有 GUILD_MEMBERS intent，身分組、禁言的變動收不到）。 */
+    const freshMember = (channel: TextChannel | NewsChannel, userId: string) =>
+        channel.guild.members.fetch({ user: userId, force: true }).catch((): null => null);
     function textChannel(guildId: string, channelId: string) {
         const channel = client.guilds.cache.get(guildId)?.channels.cache.get(channelId);
         if (channel?.type !== ChannelType.GuildText && channel?.type !== ChannelType.GuildAnnouncement) {
@@ -265,11 +274,19 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             await channel.send({ content: escapeMarkdown(text), allowedMentions: { parse: [] } });
         },
 
-        async recentMessages(guildId, channelId) {
+        async recentMessages(guildId, channelId, userId) {
             await waitReady();
             if (!messageContent) throw new TextRefused(NO_MESSAGE_CONTENT);
+            const channel = textChannel(guildId, channelId);
+            const canRead = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+            // bot 沒有讀取訊息歷史的權限時，Discord 回的是空清單而不是錯誤，要先自己檢查
+            if (!client.user || !channel.permissionsFor(client.user)?.has(canRead)) {
+                throw new TextRefused("bot 沒有讀這個頻道的權限，請管理員給 bot「檢視頻道」和「讀取訊息歷史」");
+            }
+            const member = await freshMember(channel, userId);
+            if (!member || !channel.permissionsFor(member).has(canRead)) throw new TextRefused("你在 Discord 看不到這個頻道的訊息");
             try {
-                const list = await textChannel(guildId, channelId).messages.fetch({ limit: RECENT_MESSAGES });
+                const list = await channel.messages.fetch({ limit: RECENT_MESSAGES });
                 return [...list.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp).map(toTownMessage);
             } catch (e) {
                 if (codeOf(e) === 50001 || codeOf(e) === 50013) {
@@ -288,15 +305,31 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
         async sendAs(guildId, channelId, userId, name, text) {
             await waitReady();
             const channel = textChannel(guildId, channelId);
-            const avatarURL = (await channel.guild.members.fetch(userId).catch((): null => null))?.displayAvatarURL();
+            const member = await freshMember(channel, userId);
+            if (!member) throw new TextRefused("找不到你在這個伺服器的成員資料");
+            const avatarURL = member.displayAvatarURL(); // 先拿：下一行的禁言判斷是型別守衛，之後 TS 會把 member 當成 never
+            if (member.isCommunicationDisabled()) throw new TextRefused("你在 Discord 被禁言中，暫時不能發言");
+            const permissions = channel.permissionsFor(member);
+            if (!permissions.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) {
+                throw new TextRefused("你在 Discord 不能在這個頻道發言");
+            }
+            // 慢速模式：有「管理訊息」或「管理頻道」權限的人不受限（跟 Discord 一樣）
+            const slowmode = channel.rateLimitPerUser ?? 0;
+            const bypass = permissions.has(PermissionFlagsBits.ManageMessages) || permissions.has(PermissionFlagsBits.ManageChannels);
+            const key = `${channelId}:${userId}`;
+            if (slowmode && !bypass && Date.now() - (lastSent.get(key) ?? 0) < slowmode * 1000) {
+                throw new TextRefused(`這個頻道有慢速模式，每 ${slowmode} 秒才能發一則`);
+            }
             // ponytail: webhook 的名字不能含 "discord"、"clyde"，有的話 Discord 會拒絕（50035）；遇到再決定要不要換掉
+            const hook = webhookFor(channel);
             const send = async () => (await webhookFor(channel)).send({ content: text, username: name.slice(0, 80), avatarURL, allowedMentions: { parse: [] } });
             try {
                 await send().catch((e) => {
                     if (codeOf(e) !== 10015) throw e;
-                    webhooks.delete(channelId); // webhook 被人刪掉了：重建一個再發一次
+                    forgetWebhook(channelId, hook); // webhook 被人刪掉了：重建一個再發一次
                     return send();
                 });
+                if (slowmode) lastSent.set(key, Date.now());
             } catch (e) {
                 if (codeOf(e) === 50001 || codeOf(e) === 50013) {
                     throw new TextRefused("bot 沒有「管理 Webhook」權限，沒辦法用你的名字發言，請管理員給 bot 這個權限");

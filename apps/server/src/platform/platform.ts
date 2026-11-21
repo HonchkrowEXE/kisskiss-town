@@ -19,11 +19,17 @@ export type Platform = {
     moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
     /** 在伺服器的通知頻道發一則純文字訊息（不 @ 任何人）；沒有能發的頻道就不發。暫時連不上時丟 PlatformUnavailable。 */
     announce(guildId: string, text: string): Promise<void>;
-    /** 文字頻道最新的訊息，舊的在前。讀不到時丟 TextRefused（原因可以給成員看）；暫時連不上時丟 PlatformUnavailable。 */
-    recentMessages(guildId: string, channelId: string): Promise<TownMessage[]>;
+    /**
+     * 文字頻道最新的訊息，舊的在前。成員本人在 Discord 也要看得到這個頻道。
+     * 讀不到時丟 TextRefused（原因可以給成員看）；暫時連不上時丟 PlatformUnavailable。
+     */
+    recentMessages(guildId: string, channelId: string, userId: string): Promise<TownMessage[]>;
     /** 這個伺服器的文字頻道有新訊息時呼叫 listener。讀不到訊息內容時不呼叫。回傳取消訂閱的函式。 */
     onMessage(guildId: string, listener: (channelId: string, message: TownMessage) => void): () => void;
-    /** 以成員的名字與頭像在文字頻道發言（不 @ 任何人）。發不出去時丟 TextRefused；暫時連不上時丟 PlatformUnavailable。 */
+    /**
+     * 以成員的名字與頭像在文字頻道發言（不 @ 任何人）。遵守成員在 Discord 的限制：不能發言的頻道、禁言、慢速模式。
+     * 發不出去時丟 TextRefused；暫時連不上時丟 PlatformUnavailable。
+     */
     sendAs(guildId: string, channelId: string, userId: string, name: string, text: string): Promise<void>;
 };
 
