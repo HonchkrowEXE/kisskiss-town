@@ -24,8 +24,8 @@ export interface Town {
     readonly layout: TownLayout;
     /** 目前地圖的碰撞判斷。 */
     readonly walkable: Walkable;
-    /** 伺服器時鐘（毫秒）。用它算冷卻，測試才能控制時間。 */
-    readonly clock: { currentTime: number };
+    /** 伺服器時鐘（毫秒）。用它算冷卻、設計時器，小鎮關閉時計時器會一起清掉。 */
+    readonly clock: { currentTime: number; setTimeout(run: () => void, ms: number): { clear(): void } };
     readonly ledger: ChipLedger;
     readonly townSettings: TownSettings;
 

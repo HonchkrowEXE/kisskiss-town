@@ -1,6 +1,7 @@
 import assert from "assert";
 import { layoutTown, roomAt, TILE, type TownChannel } from "../src/town/layoutTown.js";
 import { createWalkable } from "../src/town/walkable.js";
+import { TABLE_SPACING, canPlaceTable, defaultTables, seatsAround } from "../src/town/tables.js";
 
 const channel = (id: string, kind: "voice" | "text" = "voice"): TownChannel => ({ id, name: `頻道${id}`, kind });
 const channels = (n: number) => Array.from({ length: n }, (_, i) => channel(`${i}`, i % 2 ? "text" : "voice"));
@@ -108,19 +109,25 @@ describe("layoutTown", () => {
 });
 
 describe("遊戲桌的位置", () => {
-    it("每個座位都站得住、在廣場上（不在房間裡），不管頻道多少", () => {
+    it("預設的桌子不管頻道多少都放得下（座位站得住、不在房間裡），彼此不重疊", () => {
         for (const n of [0, 8, 20]) {
             const channels = Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `${i}`, kind: "voice" as const }));
             const layout = layoutTown(channels);
             const walkable = createWalkable(layout.map);
-            assert.ok(layout.tables.length > 0);
-            for (const table of layout.tables) {
-                for (const seat of table.seats) {
-                    assert.ok(walkable.canStand(seat.x, seat.y), `${n} 個頻道時 ${table.id} 的座位 ${JSON.stringify(seat)} 站不住`);
-                    assert.strictEqual(roomAt(layout.rooms, seat.x, seat.y), undefined);
-                }
-            }
+            const tables = defaultTables(layout);
+            assert.strictEqual(tables.length, 3);
+            for (const t of tables) assert.ok(canPlaceTable(t.x, t.y, layout, walkable), `${n} 個頻道時 ${t.id} 放不下`);
+            for (const a of tables) for (const b of tables) if (a !== b) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= TABLE_SPACING);
         }
+    });
+
+    it("桌子不能放在房間裡或牆邊（座位站不住）", () => {
+        const layout = layoutTown(channels(4));
+        const walkable = createWalkable(layout.map);
+        const room = layout.rooms[0].rect;
+        assert.ok(!canPlaceTable(room.x + room.width / 2, room.y + room.height / 2, layout, walkable));
+        assert.ok(!canPlaceTable(24, 24, layout, walkable)); // 左上角，上面和左邊是牆
+        assert.deepStrictEqual(seatsAround(100, 100).length, 6);
     });
 });
 

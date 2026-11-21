@@ -4,6 +4,7 @@ import type { Direction, TownState } from "../../../server/src/rooms/schema/Town
 import { CharacterLayer } from "./CharacterLayer.js";
 import { MapView } from "./MapView.js";
 import { PlayerController } from "./PlayerController.js";
+import { TableLayer } from "./TableLayer.js";
 
 /** 畫面短邊要看得到地圖上多少像素（大約 16 格）。 */
 const VIEW_SIZE = 260;
@@ -41,6 +42,7 @@ export class TownScene extends Phaser.Scene {
         this.scale.on("resize", () => this.fitCamera());
 
         this.map = new MapView(this);
+        new TableLayer(this, this.room);
         this.player = new PlayerController(this, this.room, this.stick);
         this.characters = new CharacterLayer(this, this.room, (sprite) => {
             const mine = this.room.state.characters.get(this.room.sessionId)!;

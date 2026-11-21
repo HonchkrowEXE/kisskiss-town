@@ -1,20 +1,25 @@
 import type { Room } from "@colyseus/sdk";
-import type { GameTable, TownState } from "../../../server/src/rooms/schema/TownState.js";
-import { DICE_STAKE } from "../../../server/src/games/diceDuel.js";
+import type { TownState } from "../../../server/src/rooms/schema/TownState.js";
+import { GAME_ICONS, GAME_TITLES, type GameKind } from "../../../server/src/town/tables.js";
+import { BlackjackPanel } from "./tables/BlackjackPanel.js";
+import { DicePanel } from "./tables/DicePanel.js";
+import { el, type GamePanel } from "./tables/GamePanel.js";
+import { LiarPanel } from "./tables/LiarPanel.js";
 
-type ResultRow = { name: string; dice: [number, number]; delta: number };
-type TableView = { seats: { name: string; bet: boolean }[]; bet: boolean; result: ResultRow[] };
+/** 每種遊戲的畫面。加新遊戲就加一行。 */
+const PANELS: Record<GameKind, GamePanel> = { dice: new DicePanel(), blackjack: new BlackjackPanel(), liar: new LiarPanel() };
 
-/** 名字是成員自己取的，一律用 textContent，不拼 HTML。 */
-const el = (tag: string, text = "", className = "") => Object.assign(document.createElement(tag), { textContent: text, className });
-
-/** 入座時浮在地圖上的遊戲畫面：誰坐在這桌、誰下注了、上一局結果，以及下注、擲骰、離開的按鈕。 */
+/**
+ * 入座時浮在地圖上的遊戲畫面：標題、規則、誰坐在這桌、那種遊戲的畫面，以及離開的按鈕。
+ * 遊戲區的內容交給 PANELS 裡對應的類別畫。
+ */
 export class TablePanel {
     private element = document.createElement("section");
-    /** 上次畫的內容；狀態每次同步都會檢查，沒變就不重畫，按鈕的焦點才不會一直跑掉。 */
-    private shown = "";
-
     private room: Room<any, TownState>;
+    /** 只有自己看得到的東西（伺服器私下送的）。 */
+    private secret: unknown = null;
+    /** 上次畫的內容；沒變就不重畫，按鈕的焦點和輸入框才不會一直被清掉。 */
+    private shown = "";
 
     constructor(room: Room<any, TownState>) {
         this.room = room;
@@ -23,51 +28,50 @@ export class TablePanel {
         this.element.setAttribute("aria-label", "遊戲桌");
         document.body.append(this.element);
 
-        this.element.addEventListener("click", (e) => {
-            const action = (e.target as HTMLElement).dataset.action;
-            if (action) room.send(action);
+        this.element.addEventListener("click", (e) => this.onClick(e.target as HTMLElement));
+        // 點地圖（面板以外的地方）就離開面板裡的輸入框，鍵盤才能拿來走路
+        document.addEventListener("pointerdown", (e) => {
+            const active = document.activeElement as HTMLElement | null;
+            if (active && this.element.contains(active) && !this.element.contains(e.target as Node)) active.blur();
         });
-        room.onStateChange((state) => this.render(this.viewOf(state)));
+        room.onMessage("tablePrivate", ({ data }: { tableId: string; data: unknown }) => {
+            this.secret = data;
+            this.render(room.state);
+        });
+        room.onStateChange((state) => this.render(state));
     }
 
-    /** 自己坐的那桌要顯示什麼；沒入座是 undefined。 */
-    private viewOf(state: TownState): TableView | undefined {
+    private render(state: TownState) {
         const tableId = state.characters?.get(this.room.sessionId)?.seatedAt;
-        const table: GameTable | undefined = tableId ? state.tables.get(tableId) : undefined;
-        if (!table) return undefined;
-        const nameOf = (sessionId: string) => state.characters.get(sessionId)?.name ?? "";
-        return {
-            seats: table.seats.filter((s) => s).map((s) => ({ name: nameOf(s), bet: table.bettors.includes(s) })),
-            bet: table.bettors.includes(this.room.sessionId),
-            result: table.result ? (JSON.parse(table.result) as ResultRow[]) : [],
-        };
-    }
-
-    private render(view: TableView | undefined) {
-        const key = JSON.stringify(view ?? null);
+        const table = tableId ? state.tables.get(tableId) : undefined;
+        const key = table ? JSON.stringify([table.game, Array.from(table.seats), table.view, this.secret]) : "";
         if (key === this.shown) return;
         this.shown = key;
-        this.element.hidden = !view;
-        if (!view) return;
+        this.element.hidden = !table;
+        if (!table || !table.view) return;
 
-        const seats = el("ul", "", "table-seats");
-        for (const s of view.seats) seats.append(el("li", s.bet ? `${s.name} ✅ 已下注` : s.name));
-        const actions = el("div", "", "table-actions");
-        actions.append(this.button("bet", `下注 ${DICE_STAKE}`, view.bet), this.button("roll", "擲骰", !view.bet), this.button("stand", "離開（E）"));
-        const children: Node[] = [el("h2", `🎲 骰子比大小・每局 ${DICE_STAKE} 籌碼`), seats, actions];
-        if (view.result.length) {
-            const result = el("ul", "", "table-result");
-            for (const r of view.result) {
-                result.append(el("li", `${r.name}：${r.dice[0]} + ${r.dice[1]} = ${r.dice[0] + r.dice[1]}，${r.delta > 0 ? "+" : ""}${r.delta}`));
-            }
-            children.push(el("p", "上一局"), result);
-        }
-        this.element.replaceChildren(...children);
+        const game = table.game as GameKind;
+        const panel = PANELS[game];
+        const nameOf = (sessionId: string) => state.characters.get(sessionId)?.name ?? "";
+        const seated = Array.from(table.seats).filter((s) => s);
+        const leave = Object.assign(el("button", "離開（E）") as HTMLButtonElement, { type: "button" });
+        leave.dataset.leave = "true";
+        this.element.replaceChildren(
+            el("h2", `${GAME_ICONS[game]} ${GAME_TITLES[game]}`),
+            el("p", panel.hint, "table-hint"),
+            el("p", `同桌：${seated.map(nameOf).join("、")}`),
+            ...panel.render(JSON.parse(table.view), { me: this.room.sessionId, nameOf, secret: this.secret }),
+            leave,
+        );
     }
 
-    private button(action: string, text: string, disabled = false) {
-        const b = Object.assign(el("button", text) as HTMLButtonElement, { type: "button", disabled });
-        b.dataset.action = action;
-        return b;
+    /** 按鈕：離開送 stand；遊戲動作送 tableAction，放在 .table-form 裡的話把數字欄位一起送。 */
+    private onClick(target: HTMLElement) {
+        if (target.dataset.leave) return this.room.send("stand");
+        const action = target.dataset.action;
+        if (!action) return;
+        const payload: Record<string, unknown> = { action };
+        for (const input of Array.from(target.closest(".table-form")?.querySelectorAll("input") ?? [])) payload[input.name] = Number(input.value);
+        this.room.send("tableAction", payload);
     }
 }
