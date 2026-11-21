@@ -22,6 +22,11 @@ export abstract class TownFeature {
         return {};
     }
 
+    /** 成員按了互動鍵（E）。旁邊有這個功能能互動的東西就處理並回傳 true，沒有就回傳 false 讓下一個功能試。 */
+    interact(_client: Client): boolean {
+        return false;
+    }
+
     /** 成員進小鎮，角色剛建立好。 */
     onJoin(_client: Client): void {}
 

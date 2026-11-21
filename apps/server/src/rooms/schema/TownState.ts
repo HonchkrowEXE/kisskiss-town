@@ -43,10 +43,21 @@ export const GameTable = schema({
 }, "GameTable");
 export type GameTable = SchemaType<typeof GameTable>;
 
+/** 一件家具（town/objects.ts）。x、y 是左上角的格子座標。 */
+export const PlacedObject = schema({
+    kind: t.string(), // ObjectKind：table、chair、computer、tv
+    x: t.number(),
+    y: t.number(),
+    sittingBy: t.string().default(""), // 坐在這張椅子上的人（sessionId），沒人是空字串
+    board: t.string().default("[]"), // 電腦的揪團看板 JSON：BoardPost[]
+}, "PlacedObject");
+export type PlacedObject = SchemaType<typeof PlacedObject>;
+
 export const TownState = schema({
     characters: t.map(Character),
     voice: t.map(VoiceFigure), // key 是成員的平台帳號 ID
-    map: t.string(), // TownMapState 的 JSON：地圖、房間、出生點、遊戲桌；頻道變動時整份換掉
+    map: t.string(), // TownMapState 的 JSON：地圖、房間、出生點；頻道變動時整份換掉
     tables: t.map(GameTable), // key 是桌子 ID
+    objects: t.map(PlacedObject), // 家具，key 是家具 ID
 }, "TownState");
 export type TownState = SchemaType<typeof TownState>;

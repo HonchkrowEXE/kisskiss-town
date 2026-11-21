@@ -139,6 +139,7 @@ apps/server/src/
 │       ├── Chips.ts         籌碼：簽到、救濟金
 │       ├── VoiceRooms.ts    語音房：語音裡的人站在房裡、走進去就搬頻道
 │       ├── TextRooms.ts     文字房：看訊息、發言
+│       ├── Furniture.ts     家具：椅子坐下、電腦揪團看板、電視看直播、管理員的家具編輯器
 │       ├── Slapping.ts      搧巴掌
 │       ├── GameTables.ts    遊戲桌：入座、管理員擺桌子，把動作交給桌上的遊戲
 │       ├── tables/          每種遊戲一個類別，都繼承 TableGame（骰子比大小、21 點、吹牛）
@@ -159,6 +160,8 @@ apps/client/src/
 ```
 
 伺服器回給前端的「結果」訊息（例如 `slapResult`）要顯示成畫面上方的提示的話，加進 `ui/Toast.ts` 的清單。
+
+**加一種家具：** `town/objects.ts` 的 `OBJECT_KINDS` 加一筆（名稱、大小、擋不擋路、怎麼互動）→ 前端 `scene/objectArt.ts` 加畫法 → 有自己的互動畫面的話，伺服器 `Furniture.ts` 加處理、前端 `ui/FurniturePanel.ts` 的 `VIEWS` 加一個類別。編輯器的按鈕會自動多一個。
 
 **加一種遊戲桌上的遊戲：** 規則寫成 `games/` 底下的純邏輯模組並測試 → 伺服器寫一個繼承 `TableGame` 的類別（`rooms/features/tables/`）→ `town/tables.ts` 的 `GAME_KINDS` 加一種、`GameTables.createGame` 加一行 → 前端在 `ui/tables/` 寫一個繼承 `GamePanel` 的面板、`TablePanel` 的 `PANELS` 加一行。
 

@@ -19,7 +19,7 @@ export class TouchControls {
         this.knob = pad.appendChild(document.createElement("div"));
         const buttons = document.createElement("div");
         buttons.className = "touch-buttons";
-        buttons.innerHTML = `<button type="button" data-action="slap">搧</button><button type="button" data-action="sit">坐／起</button>`;
+        buttons.innerHTML = `<button type="button" data-action="slap">搧</button><button type="button" data-action="sit">互動</button>`;
         document.body.append(pad, buttons);
 
         pad.addEventListener("pointerdown", (e) => {
@@ -33,7 +33,7 @@ export class TouchControls {
         buttons.addEventListener("click", (e) => {
             const action = (e.target as HTMLElement).dataset.action;
             if (action === "slap") room.send("slap");
-            if (action === "sit") room.send(room.state.characters?.get(room.sessionId)?.seatedAt ? "stand" : "sit");
+            if (action === "sit") room.send("interact");
         });
     }
 

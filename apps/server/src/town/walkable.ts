@@ -78,8 +78,9 @@ export type Walkable = {
  * - 圖塊集裡標了 `collides: true` 的圖塊（Tiled 的慣例，自動長出來的小鎮也用這個）
  * - Collision 圖層、或有 `collidable: true` 屬性的圖塊層上，有放圖塊的格子（tilemap.dev）
  * - Colliders 物件群組、或有 `collidable: true` 屬性的物件層裡，矩形蓋到的格子（tilemap.dev）
+ * - extraBlocked：擋路的家具佔的格子
  */
-export function createWalkable(map: TiledMap): Walkable {
+export function createWalkable(map: TiledMap, extraBlocked: Iterable<number> = []): Walkable {
     const blockedGids = new Set<number>();
     for (const tileset of map.tilesets) {
         for (const tile of tileset.tiles ?? []) {
@@ -109,6 +110,9 @@ export function createWalkable(map: TiledMap): Walkable {
             }
         }
     }
+
+    // 擋路的家具（格子編號 = y × 地圖寬 + x）
+    for (const i of extraBlocked) if (i >= 0 && i < blocked.length) blocked[i] = true;
 
     const isBlockedTile = (tx: number, ty: number) =>
         tx < 0 || ty < 0 || tx >= map.width || ty >= map.height || blocked[ty * map.width + tx];

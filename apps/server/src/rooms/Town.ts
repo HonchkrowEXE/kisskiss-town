@@ -22,8 +22,10 @@ export interface Town {
     readonly state: TownState;
     /** 目前的地圖版面（頻道變動時會整份換掉）。 */
     readonly layout: TownLayout;
-    /** 目前地圖的碰撞判斷。 */
+    /** 目前地圖的碰撞判斷（含擋路的家具）。 */
     readonly walkable: Walkable;
+    /** 只看地圖、不含家具的碰撞判斷（擺家具時用）。 */
+    readonly baseWalkable: Walkable;
     /** 伺服器時鐘（毫秒）。用它算冷卻、設計時器，小鎮關閉時計時器會一起清掉。 */
     readonly clock: { currentTime: number; setTimeout(run: () => void, ms: number): { clear(): void } };
     readonly ledger: ChipLedger;
@@ -37,6 +39,8 @@ export interface Town {
     roomOf(sessionId: string): ChannelRoom | undefined;
     /** 伺服器移動了角色（被搧、入座）之後呼叫：記下他現在在哪個房間。 */
     placeIn(sessionId: string, room: ChannelRoom | undefined, cause: RoomChangeCause): void;
+    /** 擋路的家具換了：之後的碰撞判斷加上這些格子。 */
+    setBlockedTiles(tiles: number[]): void;
     /** 伺服器移動了角色之後呼叫：前端在路上、從舊位置算的移動會被拒絕並拉回新位置。 */
     holdStill(sessionId: string): void;
     /** 送訊息給小鎮裡的每個人。 */

@@ -43,8 +43,8 @@ export class PlayerController {
 
         // 搧旁邊的人；搧不搧得到、對方退到哪都由伺服器決定
         this.onKey(this.keys.slap, () => room.send("slap"));
-        // 在遊戲桌旁按 E 入座，坐著時再按一次起身
-        this.onKey(this.keys.sit, () => room.send(this.mine()?.seatedAt ? "stand" : "sit"));
+        // 按 E 跟旁邊的東西互動：遊戲桌、椅子入座／起身，電腦、電視打開畫面（伺服器決定是哪一個）
+        this.onKey(this.keys.sit, () => room.send("interact"));
 
         // 伺服器不接受這一步，或自己被搧了：跟著伺服器給的位置走
         room.onMessage("moveRejected", (pos: Position) => this.jumpTo(pos));
