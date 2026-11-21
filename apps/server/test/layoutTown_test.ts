@@ -43,7 +43,7 @@ describe("layoutTown", () => {
         const layout = layoutTown(input);
 
         assert.deepStrictEqual(
-            layout.rooms.map((r) => [r.channelId, r.name, r.kind]),
+            layout.rooms.map((r) => [r.id, r.name, r.kind]),
             input.map((c) => [c.id, c.name, c.kind]),
         );
     });

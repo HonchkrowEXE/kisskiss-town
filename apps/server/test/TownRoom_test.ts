@@ -5,6 +5,7 @@ import type appConfig from "../src/app.config.js";
 import { testServer, fakePlatform, DEFAULT_TEST_CHANNELS } from "./testServer.js";
 import type { TownRoom } from "../src/rooms/TownRoom.js";
 import type { TownMapState } from "../src/town/layoutTown.js";
+import { PlatformUnavailable } from "../src/platform/platform.js";
 import { createWalkable } from "../src/town/walkable.js";
 
 const GUILD_A = "9000000000000000001";
@@ -287,7 +288,7 @@ describe("小鎮地圖從頻道長出來", () => {
         const { map } = await enter();
 
         assert.deepStrictEqual(map().rooms.map((r) => r.name), DEFAULT_TEST_CHANNELS.map((c) => c.name));
-        assert.strictEqual(map().botMissing, false);
+        assert.strictEqual(map().notice, null);
     });
 
     it("頻道變動時，在線成員的地圖跟著更新", async () => {
@@ -317,10 +318,46 @@ describe("小鎮地圖從頻道長出來", () => {
         assert.ok(server.walkable.canStand(character.position.x, character.position.y));
     });
 
-    it("bot 沒加進伺服器時，前端知道要顯示提示", async () => {
+    it("頻道事件連續來時，晚回來的舊結果不會蓋掉新的", async () => {
+        const { server, map } = await enter();
+        const channels = fakePlatform.platform.channels;
+        let call = 0;
+        fakePlatform.platform.channels = async () => {
+            call++;
+            if (call === 1) {
+                await new Promise((r) => setTimeout(r, 100));
+                return [{ id: "old", name: "舊的", kind: "voice" }];
+            }
+            return [{ id: "new", name: "新的", kind: "voice" }];
+        };
+        try {
+            await Promise.all([server.refreshLayout(GUILD_A), server.refreshLayout(GUILD_A)]);
+            await server.waitForNextPatch();
+        } finally {
+            fakePlatform.platform.channels = channels;
+        }
+
+        assert.deepStrictEqual(map().rooms.map((r) => r.name), ["新的"]);
+    });
+
+    it("暫時讀不到 Discord 時，小鎮照樣進得去並顯示提示", async () => {
+        const channels = fakePlatform.platform.channels;
+        fakePlatform.platform.channels = async () => {
+            throw new PlatformUnavailable("bot 登入失敗");
+        };
+        try {
+            const { map } = await enter();
+            assert.match(map().notice ?? "", /暫時讀不到/);
+            assert.deepStrictEqual(map().rooms, []);
+        } finally {
+            fakePlatform.platform.channels = channels;
+        }
+    });
+
+    it("bot 沒加進伺服器時，前端收到請管理員邀請的提示", async () => {
         const { map } = await enter(GUILD_B);
 
-        assert.strictEqual(map().botMissing, true);
+        assert.match(map().notice ?? "", /邀請/);
         assert.deepStrictEqual(map().rooms, []);
     });
 });

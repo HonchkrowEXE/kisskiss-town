@@ -1,8 +1,8 @@
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED } from "../town/walkable.js";
-import { layoutTown, type TownLayout, type TownMapState } from "../town/layoutTown.js";
-import { platform } from "../platform/platform.js";
+import { layoutTown, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
+import { platform, PlatformUnavailable } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
@@ -36,6 +36,7 @@ export class TownRoom extends Room<{
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
   private stopWatchingChannels = () => {};
+  private layoutVersion = 0;
 
   static async onAuth(token: string, options: { guildId?: string }) {
     // 驗證失敗時 Colyseus 預設回 523，經 Cloudflare 會被換成它自己的錯誤頁、訊息消失，所以改回 401
@@ -56,16 +57,33 @@ export class TownRoom extends Room<{
     this.onMessage("checkIn", (client) => this.changeChips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
 
+    // 先訂閱再讀，讀的這段時間裡發生的變動才不會漏掉
+    this.stopWatchingChannels = platform().onChannelsChanged(options.guildId, () => {
+      this.refreshLayout(options.guildId).catch((e) => console.error("更新小鎮地圖失敗", e));
+    });
     await this.refreshLayout(options.guildId);
-    this.stopWatchingChannels = platform().onChannelsChanged(options.guildId, () => this.refreshLayout(options.guildId));
   }
 
   /** 依目前的頻道清單重畫小鎮；站在新牆裡的角色送回廣場。 */
   async refreshLayout(guildId: string) {
-    const channels = await platform().channels(guildId);
-    this.layout = layoutTown(channels ?? []);
+    // 頻道事件連續來時會同時讀好幾次；只採用最後一次發出的，晚回來的舊結果不能蓋掉新的
+    const version = ++this.layoutVersion;
+    let channels: TownChannel[] = [];
+    let notice: string | null = null;
+    try {
+      const found = await platform().channels(guildId);
+      if (found) channels = found;
+      else notice = "這個伺服器還沒加入親親小鎮的 bot，請管理員邀請；邀請後小鎮會自動更新";
+    } catch (e) {
+      if (!(e instanceof PlatformUnavailable)) throw e;
+      console.warn("讀不到頻道：", e.message);
+      notice = "暫時讀不到 Discord 的頻道，小鎮先只顯示廣場";
+    }
+    if (version !== this.layoutVersion) return;
+
+    this.layout = layoutTown(channels);
     this.walkable = createWalkable(this.layout.map);
-    const map: TownMapState = { ...this.layout, botMissing: channels === null };
+    const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);
 
     this.state.characters.forEach((character) => {

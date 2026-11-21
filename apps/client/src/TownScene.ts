@@ -33,7 +33,8 @@ export class TownScene extends Phaser.Scene {
     /** 目前畫在畫面上的地圖相關物件，地圖換掉時一起清掉。 */
     private mapObjects: Phaser.GameObjects.GameObject[] = [];
     private tilemap?: Phaser.Tilemaps.Tilemap;
-    private botHint = Object.assign(document.body.appendChild(document.createElement("div")), { className: "bot-hint", hidden: true });
+    /** 伺服器要提示成員的話（例如還讀不到頻道）。用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面。 */
+    private notice = Object.assign(document.body.appendChild(document.createElement("div")), { className: "map-notice", hidden: true });
 
     /** 自己的位置由前端先走、伺服器驗證；不合法時伺服器會傳 moveRejected 拉回來。 */
     private me = { x: 0, y: 0, dir: "down" as Direction };
@@ -130,19 +131,11 @@ export class TownScene extends Phaser.Scene {
             );
         }
 
-        // 提示用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面
-        this.botHint.textContent = "這個伺服器還沒加入親親小鎮的 bot，請管理員邀請後重新打開";
-        this.botHint.hidden = !state.botMissing;
+        this.notice.textContent = state.notice ?? "";
+        this.notice.hidden = !state.notice;
 
         // 跟伺服器用同一份地圖資料算碰撞
         this.walkable = createWalkable(map);
-        // 伺服器會把站在新牆裡的角色送回廣場；自己的位置也跟著伺服器
-        const mine = this.room.state.characters?.get(this.room.sessionId);
-        if (mine && !this.walkable.canStand(this.me.x, this.me.y)) {
-            this.me.x = mine.position.x;
-            this.me.y = mine.position.y;
-            this.lastSent = { ...this.me, at: this.time.now };
-        }
     }
 
     update(time: number, delta: number) {
@@ -165,6 +158,13 @@ export class TownScene extends Phaser.Scene {
     /** 依鍵盤移動自己，撞牆時沿著牆滑（x、y 分開判斷），再定時把位置送給伺服器。 */
     private walkMe(time: number, delta: number) {
         if (!this.walkable) return;
+        // 地圖換掉後自己可能站在新牆裡：伺服器會把角色送回廣場，跟著伺服器的位置走
+        const mine = this.room.state.characters?.get(this.room.sessionId);
+        if (mine && !this.walkable.canStand(this.me.x, this.me.y)) {
+            this.me.x = mine.position.x;
+            this.me.y = mine.position.y;
+            this.lastSent = { ...this.me, at: time };
+        }
         const k = this.keys;
         const dx = Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown);
         const dy = Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown);
