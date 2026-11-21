@@ -44,12 +44,6 @@ describe("createWalkable", () => {
         assert.ok(!walk.canStand(Infinity, 24));
     });
 
-    it("出生點一定在可以站的格子中央", () => {
-        for (const r of [0, 0.3, 0.6, 0.999]) {
-            const spawn = walk.randomSpawn(() => r);
-            assert.ok(walk.canStand(spawn.x, spawn.y), `random=${r} 生在 (${spawn.x}, ${spawn.y})`);
-        }
-    });
 });
 
 describe("canWalk", () => {

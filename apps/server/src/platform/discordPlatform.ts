@@ -1,6 +1,6 @@
 import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
-import type { Platform } from "./platform.js";
+import { PlatformUnavailable, type Platform } from "./platform.js";
 
 /** 排序需要的頻道欄位，跟 discord.js 脫鉤，方便測試。 */
 export type RawChannel = TownChannel & {
@@ -35,26 +35,49 @@ const KIND: Partial<Record<ChannelType, TownChannel["kind"]>> = {
 
 const CHANNEL_EVENTS = [Events.ChannelCreate, Events.ChannelDelete, Events.ChannelUpdate];
 
+/** bot 連上 Discord 最多等多久；連不上就當作暫時讀不到，不要讓進小鎮卡住。 */
+const READY_TIMEOUT_MS = 10_000;
+
 export function createDiscordPlatform(token: string | undefined): Platform {
     if (!token) {
         console.warn("沒有設定 DISCORD_BOT_TOKEN：小鎮不會顯示頻道房間");
-        return { channels: async () => null, onChannelsChanged: () => () => {} };
+        return {
+            channels: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
+            onChannelsChanged: () => () => {},
+        };
     }
 
-    const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
-    const ready = new Promise<void>((resolve) => client.once(Events.ClientReady, () => resolve()));
-    client.login(token).catch((e) => console.error("bot 登入失敗", e));
+    const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    const ready = new Promise<void>((resolve, reject) => {
+        client.once(Events.ClientReady, () => resolve());
+        client.login(token).catch((e) => {
+            console.error("bot 登入失敗", e);
+            reject(new PlatformUnavailable("bot 登入失敗"));
+        });
+    });
+    ready.catch(() => {}); // 失敗的原因在 channels() 裡回報；這裡只是避免沒人接的錯誤讓程式結束
+
+    function waitReady() {
+        let timer: ReturnType<typeof setTimeout>;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new PlatformUnavailable("bot 還沒連上 Discord")), READY_TIMEOUT_MS);
+        });
+        return Promise.race([ready, timeout]).finally(() => clearTimeout(timer));
+    }
 
     return {
         async channels(guildId) {
-            await ready;
+            await waitReady();
             const guild = client.guilds.cache.get(guildId);
             if (!guild) return null;
+            // ponytail: 全伺服器共用一份地圖，所以只看 @everyone 的檢視權限：私人頻道不會出現，
+            // 只開放給特定身分組的頻道也不會出現。要每個人看到自己的版本，得改成每人一份房間清單。
             const everyone = guild.roles.everyone;
             const raw: RawChannel[] = [];
             for (const channel of guild.channels.cache.values()) {
                 const kind = KIND[channel.type];
-                // 只放所有人都看得到的頻道，私人頻道的名稱不會出現在小鎮上
                 if (!kind || !channel.permissionsFor(everyone)?.has(PermissionFlagsBits.ViewChannel)) continue;
                 raw.push({
                     id: channel.id,
@@ -71,13 +94,17 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             // 改名時 discord.js 傳 (舊, 新)，兩個的 guildId 一樣，看第一個就好
             const onChannel = (channel: { guildId?: string }) => channel.guildId === guildId && listener();
             const onGuild = (guild: { id: string }) => guild.id === guildId && listener();
+            // 身分組權限變了（例如 @everyone 不能再看某個分類），看得到的頻道也會變
+            const onRole = (role: { guild: { id: string } }) => role.guild.id === guildId && listener();
             for (const event of CHANNEL_EVENTS) client.on(event as string, onChannel);
             client.on(Events.GuildCreate, onGuild);
             client.on(Events.GuildDelete, onGuild);
+            client.on(Events.GuildRoleUpdate, onRole);
             return () => {
                 for (const event of CHANNEL_EVENTS) client.off(event as string, onChannel);
                 client.off(Events.GuildCreate, onGuild);
                 client.off(Events.GuildDelete, onGuild);
+                client.off(Events.GuildRoleUpdate, onRole);
             };
         },
     };

@@ -15,16 +15,16 @@ import type { TiledMap } from "./walkable.js";
 
 export type TownChannel = { id: string; name: string; kind: "voice" | "text" };
 
-export type TownRoom = TownChannel & {
-    channelId: string;
+/** 地圖上對應一個頻道的房間。id 就是頻道 ID。 */
+export type ChannelRoom = TownChannel & {
     /** 房間內部（不含牆）的範圍，像素。 */
     rect: { x: number; y: number; width: number; height: number };
 };
 
-export type TownLayout = { map: TiledMap; rooms: TownRoom[]; spawn: { x: number; y: number } };
+export type TownLayout = { map: TiledMap; rooms: ChannelRoom[]; spawn: { x: number; y: number } };
 
-/** 傳給前端的地圖：版面加上「bot 有沒有在這個伺服器」。 */
-export type TownMapState = TownLayout & { botMissing: boolean };
+/** 傳給前端的地圖：版面加上要提示成員的話（例如還讀不到頻道），沒有就是 null。 */
+export type TownMapState = TownLayout & { notice: string | null };
 
 /** 圖塊編號，對應前端 maps/tiles.svg 的格子順序（從 1 開始）。 */
 export const TILE = { floor: 1, wall: 2, voiceFloor: 3, textFloor: 4 } as const;
@@ -73,7 +73,6 @@ export function layoutTown(channels: TownChannel[]): TownLayout {
 
         return {
             ...channel,
-            channelId: channel.id,
             rect: {
                 x: (left + 1) * TILE_SIZE,
                 y: (top + 1) * TILE_SIZE,

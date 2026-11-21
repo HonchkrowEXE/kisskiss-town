@@ -24,8 +24,6 @@ export type Walkable = {
     canStand(x: number, y: number): boolean;
     /** 從 from 直線走到 to，整條路上都沒碰到牆（不能隔著牆跳過去）。 */
     canWalk(from: { x: number; y: number }, to: { x: number; y: number }): boolean;
-    /** 隨機挑一格可以站的圖塊，回傳它的中心點。 */
-    randomSpawn(random?: () => number): { x: number; y: number };
 };
 
 /**
@@ -69,17 +67,6 @@ export function createWalkable(map: TiledMap): Walkable {
         return true;
     }
 
-    const open: number[] = [];
-    blocked.forEach((b, i) => !b && open.push(i));
-
-    function randomSpawn(random = Math.random) {
-        if (open.length === 0) throw new Error("地圖上沒有可以站的格子");
-        const i = open[Math.floor(random() * open.length)];
-        return {
-            x: (i % map.width) * map.tilewidth + map.tilewidth / 2,
-            y: Math.floor(i / map.width) * map.tileheight + map.tileheight / 2,
-        };
-    }
 
     function canWalk(from: { x: number; y: number }, to: { x: number; y: number }) {
         if (!canStand(to.x, to.y)) return false;
@@ -92,5 +79,5 @@ export function createWalkable(map: TiledMap): Walkable {
         return true;
     }
 
-    return { canStand, canWalk, randomSpawn };
+    return { canStand, canWalk };
 }
