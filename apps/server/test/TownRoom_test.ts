@@ -424,7 +424,7 @@ describe("語音頻道裡的人站在房間裡", () => {
             throw new PlatformUnavailable("斷線");
         };
         try {
-            await server.refreshVoice(GUILD_A);
+            await server.voiceRooms.refresh();
             await server.waitForNextPatch();
         } finally {
             fakePlatform.platform.voiceMembers = voiceMembers;
@@ -536,9 +536,9 @@ describe("走進語音房就搬頻道", () => {
         try {
             const [a, b, c] = [server.layout.rooms[0], server.layout.rooms[2], server.layout.rooms[4]];
             const serverClient = server.clients.find((x) => x.sessionId === client.sessionId)!;
-            const moving = (server as any).moveIntoVoice(serverClient, a);
-            (server as any).moveIntoVoice(serverClient, b);
-            (server as any).moveIntoVoice(serverClient, c);
+            const moving = server.voiceRooms.moveIntoVoice(serverClient, a);
+            server.voiceRooms.moveIntoVoice(serverClient, b);
+            server.voiceRooms.moveIntoVoice(serverClient, c);
             await moving;
             await new Promise((r) => setTimeout(r, 20));
 
