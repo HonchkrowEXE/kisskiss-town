@@ -576,3 +576,103 @@ describe("走進語音房就搬頻道", () => {
         assert.deepStrictEqual(results.at(-1), { ok: false, message: "bot 沒有權限把你搬過去" });
     });
 });
+
+describe("搧巴掌", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => {
+        await colyseus.cleanup();
+        fakePlatform.announcements.length = 0;
+    });
+
+    /** 每個測試用不同的成員，資料庫（可被搧的設定）在整個測試程序裡共用。 */
+    let nextId = 2000;
+    async function enter(name: string) {
+        const user = { id: `${nextId++}`, name, guildId: GUILD_A };
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const results: { ok: boolean; message: string }[] = [];
+        client.onMessage("slapResult", (r: { ok: boolean; message: string }) => results.push(r));
+        const slapped: { x: number; y: number }[] = [];
+        client.onMessage("slapped", (p: { x: number; y: number }) => slapped.push(p));
+        const character = server.state.characters.get(client.sessionId);
+        /** 送出搧巴掌，回傳伺服器回的結果。 */
+        async function slap() {
+            client.send("slap");
+            await server.waitForMessage("slap");
+            await server.waitForNextPatch();
+            return results.at(-1);
+        }
+        return { client, server, user, character, slap, slapped };
+    }
+
+    /** 兩個人在廣場上左右相鄰：a 在左、b 在右一格。 */
+    async function neighbours() {
+        const a = await enter("小明");
+        const b = await enter("小華");
+        const { spawn } = a.server.layout;
+        Object.assign(a.character.position, { x: spawn.x, y: spawn.y });
+        Object.assign(b.character.position, { x: spawn.x + 16, y: spawn.y });
+        a.character.dir = "right";
+        return { a, b, spawn };
+    }
+
+    it("搧旁邊的人：對方往後退一格、前端被拉到新位置，Discord 收到通知", async () => {
+        const { a, b, spawn } = await neighbours();
+
+        assert.deepStrictEqual(await a.slap(), { ok: true, message: "啪！你搧了 小華" });
+        assert.deepStrictEqual([b.character.position.x, b.character.position.y], [spawn.x + 32, spawn.y]);
+        await new Promise((r) => setTimeout(r, 20));
+        assert.deepStrictEqual(b.slapped.at(-1), { x: spawn.x + 32, y: spawn.y, dir: "down" });
+        assert.deepStrictEqual(fakePlatform.announcements, [{ guildId: GUILD_A, text: "👋 小明 在親親小鎮搧了 小華 一巴掌！" }]);
+    });
+
+    it("旁邊沒人時搧不到，也不發通知", async () => {
+        const { a, b } = await neighbours();
+        b.character.position.x += 40;
+
+        assert.deepStrictEqual(await a.slap(), { ok: false, message: "旁邊沒有人可以搧" });
+        assert.deepStrictEqual(fakePlatform.announcements, []);
+    });
+
+    it("10 秒內再搧被擋，並告訴還要等幾秒", async () => {
+        const { a, b } = await neighbours();
+        await a.slap();
+        b.character.position.x = a.character.position.x + 16;
+
+        const result = await a.slap();
+        assert.strictEqual(result?.ok, false);
+        assert.match(result!.message, /冷卻中，還要 10 秒/);
+    });
+
+    it("關掉「可被搧」的人搧不到，搧的人看到提示；重新進小鎮設定還在", async () => {
+        const { a, b } = await neighbours();
+        b.client.send("setSlappable", false);
+        await b.server.waitForMessage("setSlappable");
+
+        assert.deepStrictEqual(await a.slap(), { ok: false, message: "小華 關掉了「可被搧」" });
+
+        await b.client.leave();
+        colyseus.sdk.auth.token = await JWT.sign(b.user);
+        const again = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        await b.server.waitForNextPatch();
+        assert.strictEqual(again.state.characters.get(again.sessionId).slappable, false);
+    });
+
+    it("被打退後，從舊位置送來的移動被拒絕，不能抵銷打退", async () => {
+        const { a, b, spawn } = await neighbours();
+        await a.slap();
+        const rejected: unknown[] = [];
+        b.client.onMessage("moveRejected", (p: unknown) => rejected.push(p));
+
+        b.client.send("move", { x: spawn.x + 18, y: spawn.y, dir: "left" });
+        await b.server.waitForMessage("move");
+        await new Promise((r) => setTimeout(r, 20));
+
+        assert.strictEqual(b.character.position.x, spawn.x + 32);
+        assert.strictEqual(rejected.length, 1);
+    });
+});

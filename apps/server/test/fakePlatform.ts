@@ -9,6 +9,8 @@ export function createFakePlatform() {
     const voiceListeners = new Map<string, Set<() => void>>();
     /** 收到的搬人要求，給測試檢查。 */
     const moves: { guildId: string; userId: string; channelId: string }[] = [];
+    /** 發到通知頻道的訊息，給測試檢查。 */
+    const announcements: { guildId: string; text: string }[] = [];
     let refuseMoves = false;
 
     const platform: Platform = {
@@ -37,11 +39,15 @@ export function createFakePlatform() {
             member.channelId = channelId;
             return "moved";
         },
+        async announce(guildId, text) {
+            announcements.push({ guildId, text });
+        },
     };
 
     return {
         platform,
         moves,
+        announcements,
         /** 之後的搬人要求都當作 bot 權限不夠。 */
         setRefuseMoves(value: boolean) {
             refuseMoves = value;

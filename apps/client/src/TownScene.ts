@@ -38,13 +38,14 @@ export class TownScene extends Phaser.Scene {
     private figures = new Map<string, CharacterView>();
     /** 房名標籤，key 是頻道 ID；直播時在原本的字後面加標示。 */
     private roomLabels = new Map<string, { label: Phaser.GameObjects.Text; text: string }>();
-    private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
+    private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d" | "slap", Phaser.Input.Keyboard.Key>;
 
     /** 目前畫在畫面上的地圖相關物件，地圖換掉時一起清掉。 */
     private mapObjects: Phaser.GameObjects.GameObject[] = [];
     private tilemap?: Phaser.Tilemaps.Tilemap;
     /** 短暫顯示的提示，例如走進語音房後的結果。 */
     private toast = Object.assign(document.body.appendChild(document.createElement("div")), { className: "toast", hidden: true, role: "status" });
+    private toastTimer?: ReturnType<typeof setTimeout>;
     /** 伺服器要提示成員的話（例如還讀不到頻道）。用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面。 */
     private notice = Object.assign(document.body.appendChild(document.createElement("div")), { className: "map-notice", hidden: true });
 
@@ -70,8 +71,10 @@ export class TownScene extends Phaser.Scene {
         const kb = this.input.keyboard!;
         const K = Phaser.Input.Keyboard.KeyCodes;
         this.keys = kb.addKeys({
-            up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT, w: K.W, a: K.A, s: K.S, d: K.D,
+            up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT, w: K.W, a: K.A, s: K.S, d: K.D, slap: K.F,
         }) as typeof this.keys;
+        // 搧旁邊的人；搧不搧得到、對方退到哪都由伺服器決定
+        this.keys.slap.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => !event.repeat && this.room.send("slap"));
 
         const callbacks = Callbacks.get(this.room);
 
@@ -103,14 +106,17 @@ export class TownScene extends Phaser.Scene {
             this.views.delete(sessionId);
         });
 
-        // 走進語音房後伺服器回的結果（切過去了、要先加入語音、bot 權限不夠）
-        let toastTimer: ReturnType<typeof setTimeout> | undefined;
-        this.room.onMessage("voiceMove", ({ ok, message }: { ok: boolean; message: string }) => {
-            this.toast.textContent = message;
-            this.toast.classList.toggle("error", !ok);
-            this.toast.hidden = false;
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => (this.toast.hidden = true), 4000);
+        // 走進語音房後伺服器回的結果（切過去了、要先加入語音、bot 權限不夠），以及搧巴掌的結果（命中、冷卻中、對方關掉了）
+        this.room.onMessage("voiceMove", (r: { ok: boolean; message: string }) => this.showToast(r));
+        this.room.onMessage("slapResult", (r: { ok: boolean; message: string }) => this.showToast(r));
+
+        // 有人被搧：所有人都看到對方閃一下、跳出「啪！」
+        this.room.onMessage("slap", ({ to }: { from: string; to: string }) => this.playSlap(to));
+
+        // 自己被搧：伺服器決定了被打退的位置，跟著它走
+        this.room.onMessage("slapped", (pos: { x: number; y: number; dir: Direction }) => {
+            this.me = { x: pos.x, y: pos.y, dir: pos.dir };
+            this.lastSent = { ...this.me, at: this.time.now };
         });
 
         this.room.onMessage("moveRejected", (pos: { x: number; y: number; dir: Direction }) => {
@@ -119,6 +125,27 @@ export class TownScene extends Phaser.Scene {
             this.me.dir = pos.dir;
             this.lastSent = { ...this.me, at: this.time.now };
         });
+    }
+
+    private showToast({ ok, message }: { ok: boolean; message: string }) {
+        this.toast.textContent = message;
+        this.toast.classList.toggle("error", !ok);
+        this.toast.hidden = false;
+        clearTimeout(this.toastTimer);
+        this.toastTimer = setTimeout(() => (this.toast.hidden = true), 4000);
+    }
+
+    /** 被搧的角色閃紅、頭上跳出「啪！」往上飄走。 */
+    private playSlap(sessionId: string) {
+        const view = this.views.get(sessionId);
+        if (!view) return;
+        view.sprite.setTint(0xff6666);
+        this.time.delayedCall(200, () => view.sprite.clearTint());
+        const pop = this.add
+            .text(view.sprite.x, view.sprite.y - LABEL_OFFSET - 6, "啪！", { fontSize: "8px", color: "#ffeb3b", resolution: 3, stroke: "#000", strokeThickness: 2 })
+            .setOrigin(0.5, 1)
+            .setDepth(DEPTH.name);
+        this.tweens.add({ targets: pop, y: pop.y - 10, alpha: 0, duration: 600, onComplete: () => pop.destroy() });
     }
 
     /** 畫出伺服器給的地圖：圖塊、房間名稱，沒有 bot 時顯示提示。 */

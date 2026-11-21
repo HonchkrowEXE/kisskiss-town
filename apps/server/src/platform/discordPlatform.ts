@@ -1,4 +1,4 @@
-import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits } from "discord.js";
+import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits, escapeMarkdown } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
 import { MoveRefused, PlatformUnavailable, type Platform, type VoiceMember } from "./platform.js";
 
@@ -77,6 +77,9 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             },
             onVoiceChanged: () => () => {},
             moveToVoice: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
+            announce: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
         };
@@ -189,6 +192,16 @@ export function createDiscordPlatform(token: string | undefined): Platform {
                 if (code === 10003) throw new MoveRefused("這個語音頻道已經不存在了");
                 throw e;
             }
+        },
+
+        async announce(guildId, text) {
+            await waitReady();
+            // ponytail: 先發在伺服器設定的「系統訊息頻道」。要讓管理員自己指定頻道，得加斜線指令（bot 要重新邀請、多要 applications.commands）
+            const channel = client.guilds.cache.get(guildId)?.systemChannel;
+            const me = client.user;
+            if (!channel || !me || !channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return;
+            // 名字是成員自己取的，跳脫 Markdown、不解析 @，避免變成格式或 @everyone
+            await channel.send({ content: escapeMarkdown(text), allowedMentions: { parse: [] } });
         },
     };
 }
