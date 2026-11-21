@@ -18,7 +18,9 @@ export type Platform = {
      */
     moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
     /** 在伺服器的通知頻道發一則純文字訊息（不 @ 任何人）；沒有能發的頻道就不發。暫時連不上時丟 PlatformUnavailable。 */
-    announce(guildId: string, text: string): Promise<void>;
+    announce(guildId: string, text: string, channelId?: string): Promise<void>;
+    /** 這位成員是不是管理員（有「管理伺服器」權限）。每次都問平台，不用快取。暫時連不上時丟 PlatformUnavailable。 */
+    isAdmin(guildId: string, userId: string): Promise<boolean>;
     /**
      * 文字頻道最新的訊息，舊的在前。成員本人在 Discord 也要看得到這個頻道。
      * 讀不到時丟 TextRefused（原因可以給成員看）；暫時連不上時丟 PlatformUnavailable。

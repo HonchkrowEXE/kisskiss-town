@@ -944,3 +944,71 @@ describe("文字房", () => {
         assert.deepStrictEqual(panels, []);
     });
 });
+
+describe("管理員設定通知頻道", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => {
+        await colyseus.cleanup();
+        fakePlatform.announcements.length = 0;
+    });
+    afterEach(() => fakePlatform.admins.clear());
+
+    let nextId = 5000;
+    async function enter(name: string, { admin = false } = {}) {
+        const user = { id: `${nextId++}`, name, guildId: GUILD_A };
+        if (admin) fakePlatform.admins.add(user.id);
+        const adminMessages: unknown[] = [];
+        const results: { ok: boolean; message: string }[] = [];
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        client.onMessage("admin", (m: unknown) => adminMessages.push(m));
+        client.onMessage("adminResult", (r: { ok: boolean; message: string }) => results.push(r));
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        await new Promise((r) => setTimeout(r, 20));
+        async function setNotify(channelId: unknown) {
+            client.send("setNotifyChannel", channelId);
+            await server.waitForMessage("setNotifyChannel");
+            await new Promise((r) => setTimeout(r, 20));
+            return results.at(-1);
+        }
+        return { client, server, user, adminMessages, setNotify };
+    }
+
+    it("管理員一進小鎮就收到設定，一般成員收不到", async () => {
+        const admin = await enter("鎮長", { admin: true });
+        const member = await enter("小明");
+
+        assert.strictEqual(admin.adminMessages.length, 1);
+        assert.deepStrictEqual(member.adminMessages, []);
+    });
+
+    it("管理員選了文字頻道後，搧巴掌通知發在那裡；改回空字串就回到系統訊息頻道", async () => {
+        const admin = await enter("鎮長", { admin: true });
+        assert.deepStrictEqual(await admin.setNotify("c1"), { ok: true, message: "搧巴掌通知改發在 #頻道1" });
+
+        const victim = await enter("小華");
+        const { spawn } = admin.server.layout;
+        Object.assign(admin.server.state.characters.get(admin.client.sessionId).position, { x: spawn.x, y: spawn.y });
+        Object.assign(admin.server.state.characters.get(victim.client.sessionId).position, { x: spawn.x + 16, y: spawn.y });
+        admin.client.send("slap");
+        await admin.server.waitForMessage("slap");
+        await new Promise((r) => setTimeout(r, 20));
+        assert.strictEqual(fakePlatform.announcements.at(-1)?.channelId, "c1");
+
+        assert.strictEqual((await admin.setNotify(""))?.ok, true);
+        assert.strictEqual(admin.server.townSettings.notifyChannel(GUILD_A), undefined);
+    });
+
+    it("一般成員不能改，也不能選語音頻道或不存在的頻道", async () => {
+        const member = await enter("小明");
+        assert.deepStrictEqual(await member.setNotify("c1"), { ok: false, message: "只有管理員（有「管理伺服器」權限）能改" });
+
+        const admin = await enter("鎮長", { admin: true });
+        assert.deepStrictEqual(await admin.setNotify("c0"), { ok: false, message: "只能選小鎮上的文字頻道" });
+        assert.deepStrictEqual(await admin.setNotify("nope"), { ok: false, message: "只能選小鎮上的文字頻道" });
+        assert.deepStrictEqual(await admin.setNotify(42), { ok: false, message: "只能選小鎮上的文字頻道" });
+    });
+});

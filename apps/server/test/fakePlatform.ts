@@ -10,7 +10,9 @@ export function createFakePlatform() {
     /** 收到的搬人要求，給測試檢查。 */
     const moves: { guildId: string; userId: string; channelId: string }[] = [];
     /** 發到通知頻道的訊息，給測試檢查。 */
-    const announcements: { guildId: string; text: string }[] = [];
+    const announcements: { guildId: string; text: string; channelId?: string }[] = [];
+    /** 當作管理員的帳號 ID，測試直接加。 */
+    const admins = new Set<string>();
     const messages = new Map<string, TownMessage[]>(); // key 是頻道 ID
     const messageListeners = new Map<string, Set<(channelId: string, message: TownMessage) => void>>();
     /** 用成員身分發出的訊息，給測試檢查。 */
@@ -44,8 +46,11 @@ export function createFakePlatform() {
             member.channelId = channelId;
             return "moved";
         },
-        async announce(guildId, text) {
-            announcements.push({ guildId, text });
+        async announce(guildId, text, channelId) {
+            announcements.push({ guildId, text, ...(channelId && { channelId }) });
+        },
+        async isAdmin(_guildId, userId) {
+            return admins.has(userId);
         },
         async recentMessages(_guildId, channelId, _userId) {
             if (textRefusal) throw new TextRefused(textRefusal);
@@ -66,6 +71,7 @@ export function createFakePlatform() {
         platform,
         moves,
         announcements,
+        admins,
         sent,
         /** 之後讀訊息、發言都當作被拒絕（例如沒打開 Message Content），原因是 reason；給 undefined 恢復。 */
         setTextRefusal(reason: string | undefined) {

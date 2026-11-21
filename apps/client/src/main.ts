@@ -7,6 +7,7 @@ import { mountChipHud } from "./chipHud.js";
 import { mountTablePanel } from "./tablePanel.js";
 import { mountTouchControls } from "./touchControls.js";
 import { mountTextPanel } from "./textPanel.js";
+import { mountAdminControls } from "./adminControls.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 // 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
@@ -36,6 +37,7 @@ try {
     mountChipHud(room);
     mountTablePanel(room);
     mountTextPanel(room);
+    mountAdminControls(room);
     const stick = mountTouchControls(room);
 
 
