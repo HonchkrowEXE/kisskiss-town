@@ -24,8 +24,8 @@ const DEPTH = { map: 0, roomName: 5, character: 10, name: 11 };
 
 type CharacterView = { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text };
 
-/** 名字後面的語音狀態標示：靜音、拒聽、直播中。不在語音裡就是空字串。 */
-function badges(figure: VoiceFigure | undefined) {
+/** 名字後面的動態（名詞表）：靜音、拒聽、直播中。不在語音裡就是空字串。 */
+function dynamicsText(figure: VoiceFigure | undefined) {
     if (!figure) return "";
     return (figure.muted ? " 🔇" : "") + (figure.deafened ? " 🙉" : "") + (figure.streaming ? " 🔴" : "");
 }
@@ -164,7 +164,7 @@ export class TownScene extends Phaser.Scene {
             const x = Phaser.Math.Linear(view.sprite.x, target.x, t);
             const y = Phaser.Math.Linear(view.sprite.y, target.y, t);
             view.sprite.setPosition(x, y).setFrame(FRAME[(isMe ? this.me.dir : character.dir) as Direction] ?? 0);
-            view.label.setPosition(x, y - LABEL_OFFSET).setText(character.name + badges(voice?.get(character.userId)));
+            view.label.setPosition(x, y - LABEL_OFFSET).setText(character.name + dynamicsText(voice?.get(character.userId)));
         });
 
         this.showVoiceFigures();
@@ -200,7 +200,7 @@ export class TownScene extends Phaser.Scene {
                 this.figures.set(userId, view);
             }
             view.sprite.setVisible(true).setPosition(figure.x, figure.y);
-            view.label.setVisible(true).setPosition(figure.x, figure.y - LABEL_OFFSET).setText(figure.name + badges(figure));
+            view.label.setVisible(true).setPosition(figure.x, figure.y - LABEL_OFFSET).setText(figure.name + dynamicsText(figure));
         });
 
         for (const [userId, view] of this.figures) {

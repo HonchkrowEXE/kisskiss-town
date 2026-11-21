@@ -77,6 +77,8 @@ export class TownRoom extends Room<{
       members = await platform().voiceMembers(guildId);
     } catch (e) {
       if (!(e instanceof PlatformUnavailable)) throw e;
+      console.warn("讀不到語音狀態：", e.message);
+      return; // 暫時連不上就保留原本的樣子，不要讓語音房裡的人整批消失
     }
     if (version !== this.voiceVersion) return;
 
@@ -114,15 +116,16 @@ export class TownRoom extends Room<{
     const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);
 
-    // 房間位置變了，語音房裡的人也要重新站位
-    await this.refreshVoice(guildId);
-
+    // 先把站在新牆裡的角色送回廣場，跟新地圖在同一次同步送出
     this.state.characters.forEach((character) => {
       if (this.walkable.canStand(character.position.x, character.position.y)) return;
       const spawn = this.spawnPoint();
       character.position.x = spawn.x;
       character.position.y = spawn.y;
     });
+
+    // 房間位置變了，語音房裡的人也要重新站位；失敗不影響地圖
+    await this.refreshVoice(guildId).catch((e) => console.error("更新語音狀態失敗", e));
   }
 
   /** 廣場出生點附近隨機一格，避免大家疊在同一點。 */

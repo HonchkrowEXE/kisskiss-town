@@ -138,15 +138,17 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             };
         },
 
-
         async voiceMembers(guildId) {
             await waitReady();
             const guild = client.guilds.cache.get(guildId);
             if (!guild) return [];
             return toVoiceMembers(
-                [...guild.voiceStates.cache.values()].map((v) => ({
+                [...guild.voiceStates.cache.values()]
+                    .filter((v) => v.id !== client.user?.id) // bot 自己不畫
+                    .map((v) => ({
                     userId: v.id,
-                    displayName: v.member?.displayName ?? null,
+                    // ponytail: 名字只在語音狀態變動時更新；改暱稱要等 GUILD_MEMBERS（特權權限）才收得到
+                    displayName: v.member?.displayName ?? client.users.cache.get(v.id)?.displayName ?? null,
                     channelId: v.channelId,
                     selfMute: v.selfMute,
                     serverMute: v.serverMute,

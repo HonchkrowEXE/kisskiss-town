@@ -51,4 +51,12 @@ describe("placeVoiceFigures", () => {
         const members = Array.from({ length: 30 }, (_, i) => ({ userId: `${String(i).padStart(2, "0")}`, channelId: "game" }));
         for (const p of placeVoiceFigures(layout.rooms, members)) assert.ok(inside(p, "game"), p.userId);
     });
+
+    it("房間很矮時也不會站到房間外面", () => {
+        const short = [{ id: "tiny", name: "小房間", kind: "voice" as const, rect: { x: 100, y: 100, width: 32, height: 20 } }];
+        const placed = placeVoiceFigures(short, [{ userId: "1", channelId: "tiny" }, { userId: "2", channelId: "tiny" }]);
+        for (const p of placed) {
+            assert.ok(p.x >= 100 && p.x <= 132 && p.y >= 100 && p.y <= 120, JSON.stringify(p));
+        }
+    });
 });

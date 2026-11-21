@@ -416,6 +416,23 @@ describe("語音頻道裡的人站在房間裡", () => {
         assert.strictEqual(client.state.voice.size, 0);
     });
 
+    it("暫時連不上 Discord 時，語音房裡的人保持原樣不會消失", async () => {
+        fakePlatform.setVoice(GUILD_A, [voice("1", "c0")]);
+        const { client, server } = await enter();
+        const voiceMembers = fakePlatform.platform.voiceMembers;
+        fakePlatform.platform.voiceMembers = async () => {
+            throw new PlatformUnavailable("斷線");
+        };
+        try {
+            await server.refreshVoice(GUILD_A);
+            await server.waitForNextPatch();
+        } finally {
+            fakePlatform.platform.voiceMembers = voiceMembers;
+        }
+
+        assert.strictEqual(client.state.voice.size, 1);
+    });
+
     it("頻道不在地圖上的人不顯示", async () => {
         fakePlatform.setVoice(GUILD_A, [voice("1", "private-channel")]);
         const { client } = await enter();
