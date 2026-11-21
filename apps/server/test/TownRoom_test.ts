@@ -685,7 +685,7 @@ describe("文字房", () => {
     beforeEach(async () => {
         await colyseus.cleanup();
         fakePlatform.sent.length = 0;
-        fakePlatform.setMessages("c1", [{ id: "m1", author: "老王", content: "大家好", at: 1 }]);
+        fakePlatform.setMessages("c1", [{ id: "m1", author: "老王", authorId: "laowang",content: "大家好", at: 1 }]);
     });
     afterEach(() => fakePlatform.setTextRefusal(undefined));
 
@@ -732,7 +732,7 @@ describe("文字房", () => {
         const { room, panels, enter, leave } = await standOutside(1); // c1 是文字房
 
         await enter();
-        assert.deepStrictEqual(panels.at(-1), { channelId: room.id, name: room.name, messages: [{ id: "m1", author: "老王", content: "大家好", at: 1 }], notice: null });
+        assert.deepStrictEqual(panels.at(-1), { channelId: room.id, name: room.name, messages: [{ id: "m1", author: "老王", authorId: "laowang",content: "大家好", at: 1 }], notice: null });
 
         await leave();
         assert.strictEqual(panels.at(-1), null);
@@ -743,10 +743,10 @@ describe("文字房", () => {
         await inside.enter();
         const outside = await standOutside(3);
 
-        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m2", author: "老王", content: "有人嗎", at: 2 });
+        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m2", author: "老王", authorId: "laowang",content: "有人嗎", at: 2 });
         await new Promise((r) => setTimeout(r, 50));
 
-        assert.deepStrictEqual(inside.live, [{ channelId: "c1", message: { id: "m2", author: "老王", content: "有人嗎", at: 2 } }]);
+        assert.deepStrictEqual(inside.live, [{ channelId: "c1", message: { id: "m2", author: "老王", authorId: "laowang",content: "有人嗎", at: 2 } }]);
         assert.deepStrictEqual(outside.live, []);
     });
 
@@ -796,7 +796,7 @@ describe("文字房", () => {
         const { live, enter } = await standOutside(1);
         await enter();
 
-        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m3", author: "老王", content: "秘密", at: 3 });
+        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m3", author: "老王", authorId: "laowang",content: "秘密", at: 3 });
         await new Promise((r) => setTimeout(r, 50));
         assert.deepStrictEqual(live, []);
     });
@@ -805,7 +805,7 @@ describe("文字房", () => {
         const { live, enter } = await standOutside(0);
         await enter();
 
-        fakePlatform.emitMessage(GUILD_A, "c0", { id: "m4", author: "老王", content: "語音聊天", at: 4 });
+        fakePlatform.emitMessage(GUILD_A, "c0", { id: "m4", author: "老王", authorId: "laowang",content: "語音聊天", at: 4 });
         await new Promise((r) => setTimeout(r, 50));
         assert.deepStrictEqual(live, []);
     });

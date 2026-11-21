@@ -68,6 +68,18 @@ export class CharacterLayer {
         return this.updateVoiceFigures();
     }
 
+    /** 這位成員的角色現在畫在哪（打開小鎮的人，或站在語音房裡的人）；看不到是 undefined。 */
+    positionOf(userId: string): { x: number; y: number } | undefined {
+        let found: { x: number; y: number } | undefined;
+        this.room.state.characters?.forEach((character, sessionId) => {
+            const view = this.characters.get(sessionId);
+            if (!found && view && character.userId === userId) found = { x: view.sprite.x, y: view.sprite.y };
+        });
+        const figure = this.figures.get(userId);
+        if (!found && figure?.sprite.visible) found = { x: figure.sprite.x, y: figure.sprite.y };
+        return found;
+    }
+
     /** 面向和走了多久 → 角色圖的第幾格。停著是站姿，走路時左右腳輪流。 */
     private frameOf(dir: string, walking: number) {
         const step = walking > 0 ? 1 + (Math.floor(walking / STEP_MS) % 2) : 0;
@@ -124,7 +136,8 @@ export class CharacterLayer {
         return {
             sprite: this.scene.add.sprite(x, y, texture, 0).setOrigin(0.5, 0.75).setDepth(DEPTH.character),
             label: this.scene.add
-                .text(x, y - LABEL_OFFSET, name, { fontSize, color: "#fff", resolution: 3 })
+                // 黑色描邊：在淺色地毯上也看得清楚
+                .text(x, y - LABEL_OFFSET, name, { fontSize, color: "#fff", resolution: 3, stroke: "#000", strokeThickness: 2 })
                 .setOrigin(0.5, 1)
                 .setDepth(DEPTH.name),
             look,

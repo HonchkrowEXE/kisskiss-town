@@ -16,6 +16,7 @@ import type { TownFeature } from "./features/TownFeature.js";
 import { VoiceRooms } from "./features/VoiceRooms.js";
 import { Wardrobe } from "./features/Wardrobe.js";
 import { Furniture } from "./features/Furniture.js";
+import { SpeechBubbles } from "./features/SpeechBubbles.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 import type { RoomChangeCause, Town } from "./Town.js";
 
@@ -88,6 +89,7 @@ export class TownRoom extends Room<{
       new Furniture(this), // 要在遊戲桌前面：家具先擺好，遊戲桌才不會疊上去
       new GameTables(this),
       new TextRooms(this),
+      new SpeechBubbles(this),
       this.voiceRooms,
       new AdminSettings(this),
     ];
