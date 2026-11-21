@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
 import type { StoredMap } from "./importMap.js";
 import type { TablePlacement } from "./tables.js";
+import type { BoardPost, TownObject } from "./objects.js";
 
 /** 自訂地圖換了（匯入或改回自動）時通知正在開的小鎮重畫。 */
 const mapEvents = new EventEmitter();
@@ -30,7 +31,54 @@ export class TownSettings {
                 guild_id TEXT PRIMARY KEY,
                 map_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS town_objects (
+                guild_id TEXT PRIMARY KEY,
+                objects_json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS town_boards (
+                guild_id TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                posts_json TEXT NOT NULL,
+                PRIMARY KEY (guild_id, object_id)
+            );
         `);
+    }
+
+    /** 管理員用編輯器擺好的家具；還沒擺過是 undefined（用預設的家具）。 */
+    objects(guildId: string): TownObject[] | undefined {
+        const row = this.db.prepare("SELECT objects_json FROM town_objects WHERE guild_id = ?").get(guildId) as { objects_json: string } | undefined;
+        return row ? (JSON.parse(row.objects_json) as TownObject[]) : undefined;
+    }
+
+    /** 給 undefined 就改回預設家具。 */
+    setObjects(guildId: string, objects: TownObject[] | undefined) {
+        if (!objects) {
+            this.db.prepare("DELETE FROM town_objects WHERE guild_id = ?").run(guildId);
+            return;
+        }
+        this.db
+            .prepare(
+                `INSERT INTO town_objects (guild_id, objects_json) VALUES (?, ?)
+                 ON CONFLICT (guild_id) DO UPDATE SET objects_json = excluded.objects_json`,
+            )
+            .run(guildId, JSON.stringify(objects));
+    }
+
+    /** 某台電腦的揪團看板。 */
+    board(guildId: string, objectId: string): BoardPost[] {
+        const row = this.db.prepare("SELECT posts_json FROM town_boards WHERE guild_id = ? AND object_id = ?").get(guildId, objectId) as
+            | { posts_json: string }
+            | undefined;
+        return row ? (JSON.parse(row.posts_json) as BoardPost[]) : [];
+    }
+
+    setBoard(guildId: string, objectId: string, posts: BoardPost[]) {
+        this.db
+            .prepare(
+                `INSERT INTO town_boards (guild_id, object_id, posts_json) VALUES (?, ?, ?)
+                 ON CONFLICT (guild_id, object_id) DO UPDATE SET posts_json = excluded.posts_json`,
+            )
+            .run(guildId, objectId, JSON.stringify(posts));
     }
 
     /** 管理員匯入的自訂地圖；沒有是 undefined（用自動長出來的小鎮）。 */

@@ -36,6 +36,23 @@ export class GameTables extends TownFeature {
         };
     }
 
+    /** 按 E：坐在遊戲桌就起身；旁邊有遊戲桌就入座；都不是就交給下一個功能。 */
+    interact(client: Client) {
+        const me = this.town.state.characters.get(client.sessionId);
+        if (!me) return false;
+        if (this.tables.has(me.seatedAt)) {
+            this.stand(client.sessionId);
+            return true;
+        }
+        if (me.seatedAt || !this.nearestTable(me.position)) return false;
+        this.sit(client);
+        return true;
+    }
+
+    private nearestTable(position: { x: number; y: number }) {
+        return [...this.tables.values()].find((t) => Math.hypot(t.placement.x - position.x, t.placement.y - position.y) <= SIT_RANGE);
+    }
+
     /** 斷線視為起身，由各遊戲決定怎麼處理這一局（退出、算停牌、算輸）。 */
     onLeave(client: Client) {
         this.stand(client.sessionId);
@@ -58,7 +75,7 @@ export class GameTables extends TownFeature {
         this.town.forEachCharacterOf(client.auth.id, (character) => (seatedElsewhere ||= character !== me && !!character.seatedAt));
         if (seatedElsewhere) return tell(false, "你已經在另一個分頁入座了");
 
-        const live = [...this.tables.values()].find((t) => Math.hypot(t.placement.x - me.position.x, t.placement.y - me.position.y) <= SIT_RANGE);
+        const live = this.nearestTable(me.position);
         if (!live) return tell(false, "旁邊沒有遊戲桌");
         const table = this.town.state.tables.get(live.placement.id)!;
         const index = table.seats.indexOf("");

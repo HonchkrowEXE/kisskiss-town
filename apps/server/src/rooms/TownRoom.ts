@@ -15,6 +15,7 @@ import { TextRooms } from "./features/TextRooms.js";
 import type { TownFeature } from "./features/TownFeature.js";
 import { VoiceRooms } from "./features/VoiceRooms.js";
 import { Wardrobe } from "./features/Wardrobe.js";
+import { Furniture } from "./features/Furniture.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 import type { RoomChangeCause, Town } from "./Town.js";
 
@@ -47,6 +48,8 @@ export class TownRoom extends Room<{
   guildId = "";
   layout: TownLayout = layoutTown([]);
   walkable = createWalkable(this.layout.map);
+  /** 只看地圖、還沒加上家具的碰撞（擺家具時用，不然家具會把自己當牆）。 */
+  baseWalkable = this.walkable;
   ledger = new ChipLedger(database());
   townSettings = new TownSettings(database());
 
@@ -82,6 +85,7 @@ export class TownRoom extends Room<{
       new Chips(this),
       new Slapping(this),
       new Wardrobe(this),
+      new Furniture(this), // 要在遊戲桌前面：家具先擺好，遊戲桌才不會疊上去
       new GameTables(this),
       new TextRooms(this),
       this.voiceRooms,
@@ -89,6 +93,12 @@ export class TownRoom extends Room<{
     ];
 
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
+    // 按 E：依序問每個功能旁邊有沒有它能互動的東西（遊戲桌、椅子、電腦…），第一個接手的處理
+    this.onMessage("interact", (client) => {
+      if (!this.features.some((feature) => feature.interact(client))) {
+        client.send("tableResult", { ok: false, message: "旁邊沒有可以互動的東西" });
+      }
+    });
     for (const feature of this.features) {
       for (const [type, handler] of Object.entries(feature.messages())) this.onMessage(type, handler);
     }
@@ -120,7 +130,8 @@ export class TownRoom extends Room<{
     // 管理員匯入過自訂地圖就用它（房間從地圖上的 area 物件來），不然照頻道清單自動長出來
     const custom = this.townSettings.customMap(guildId);
     this.layout = custom ? importedLayout(custom, channels) : layoutTown(channels);
-    this.walkable = createWalkable(this.layout.map);
+    this.baseWalkable = createWalkable(this.layout.map);
+    this.walkable = this.baseWalkable; // 家具在 Furniture.onLayoutChanged 重擺後再加上
     const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);
 
@@ -202,6 +213,10 @@ export class TownRoom extends Room<{
     const client = this.clientOf(sessionId);
     if (!client) return;
     for (const feature of this.features) feature.onRoomChanged(client, room, before, cause);
+  }
+
+  setBlockedTiles(tiles: number[]) {
+    this.walkable = createWalkable(this.layout.map, tiles);
   }
 
   holdStill(sessionId: string) {

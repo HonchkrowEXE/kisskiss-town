@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { TownMapState } from "../../../server/src/town/layoutTown.js";
 import { createWalkable, isCollisionLayer, type Walkable } from "../../../server/src/town/walkable.js";
+import { blockedTiles, type TownObject } from "../../../server/src/town/objects.js";
 import { DEPTH } from "./look.js";
 
 /** 房間名稱最多顯示幾個字，太長的截斷。 */
@@ -58,7 +59,25 @@ export class MapView {
 
         this.notice.textContent = state.notice ?? "";
         this.notice.hidden = !state.notice;
-        this.walkable = createWalkable(map);
+        this.current = state;
+        this.updateWalkable();
+    }
+
+    /** 目前的地圖（還沒收到是 undefined）。 */
+    current?: TownMapState;
+    /** 擋路的家具，碰撞判斷要算進去。 */
+    private furniture: TownObject[] = [];
+
+    /** 家具變了：重算碰撞（跟伺服器一樣，擋路的家具算牆）。 */
+    setFurniture(objects: TownObject[]) {
+        this.furniture = objects;
+        this.updateWalkable();
+    }
+
+    private updateWalkable() {
+        if (!this.current) return;
+        const { map } = this.current;
+        this.walkable = createWalkable(map, blockedTiles(this.furniture, map.width));
     }
 
     /** 自動長出來的小鎮：一層圖塊，用內建的 tiles.svg。 */
