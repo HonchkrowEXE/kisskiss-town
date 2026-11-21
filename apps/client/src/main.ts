@@ -5,7 +5,8 @@ import { login } from "./login.js";
 import { TownScene } from "./TownScene.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
-const colyseus = new Client("/colyseus");
+// 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
+const colyseus = new Client(location.hostname.endsWith("discordsays.com") ? location.origin : "/colyseus");
 
 try {
     const { guildId } = await login(colyseus);
@@ -22,5 +23,5 @@ try {
     });
 } catch (e) {
     console.error(e);
-    app.textContent = `進不了小鎮：${e instanceof Error ? e.message : e}`;
+    app.textContent = `進不了小鎮：${e instanceof Error ? `${e.name} ${(e as any).code ?? ""} ${e.message}` : JSON.stringify(e)}`;
 }

@@ -90,8 +90,7 @@ npm test -w server
 - [ ] **OAuth2**：複製 Client ID 和 Client Secret
   - Client ID 填進 `apps/server/.env.development` 的 `DISCORD_CLIENT_ID`，以及 `apps/client/.env` 的 `VITE_DISCORD_CLIENT_ID`
   - Client Secret 填進 `apps/server/.env.development` 的 `DISCORD_CLIENT_SECRET`。**不要 commit、不要貼到任何地方**
-- [ ] **Activities → Settings**：勾 `Enable Activities`，Supported Platforms 勾你要測的平台
-- [ ] **Activities → URL Mappings**：等下一節拿到網址再填
+- [ ] **Activities → Settings**：Supported Platforms 勾你要測的平台。`Enable Activities` 要先有 URL Mapping 才能勾，留到下一節第一次測試時再勾
 
 Discord App 也要打開開發者模式：使用者設定 → 進階 → `開發者模式`。
 
@@ -107,6 +106,7 @@ npm run cloudflared
 
 1. 從 `cloudflared` 的輸出複製 `https://xxxx.trycloudflare.com` 網址
 2. 到 **Activities → URL Mappings**，PREFIX `/` 的 TARGET 填這個網址（不含 `https://`）。這個網址每次重開 `cloudflared` 都會變，所以每次都要重填
+   - 第一次測試：填完後回 **Activities → Settings** 勾 `Enable Activities`
 3. 在 Discord 的測試伺服器進語音頻道，點火箭圖示打開 Activity 清單，選你的應用程式
 
 只要一條 URL Mapping 就夠：伺服器的請求走 `/colyseus`，由 Vite 轉給本機的 2567。
