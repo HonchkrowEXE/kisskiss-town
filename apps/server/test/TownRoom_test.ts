@@ -361,3 +361,71 @@ describe("小鎮地圖從頻道長出來", () => {
         assert.deepStrictEqual(map().rooms, []);
     });
 });
+
+describe("語音頻道裡的人站在房間裡", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => colyseus.cleanup());
+    afterEach(() => fakePlatform.setVoice(GUILD_A, []));
+
+    const voice = (userId: string, channelId: string, over: object = {}) => ({
+        userId, name: `成員${userId}`, channelId, muted: false, deafened: false, streaming: false, ...over,
+    });
+
+    async function enter() {
+        colyseus.sdk.auth.token = await JWT.sign({ id: "me", name: "小明", guildId: GUILD_A });
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        return { client, server };
+    }
+
+    /** 等伺服器處理完語音變動並同步給前端。 */
+    async function settle(server: TownRoom) {
+        await new Promise((r) => setTimeout(r, 20));
+        await server.waitForNextPatch();
+    }
+
+    it("一進小鎮就看到已經在語音頻道裡的人，站在對應房間裡", async () => {
+        fakePlatform.setVoice(GUILD_A, [voice("1", "c0"), voice("2", "c2", { muted: true })]);
+        const { client, server } = await enter();
+
+        const figure = client.state.voice.get("2");
+        const room = server.layout.rooms.find((r) => r.id === "c2")!;
+        assert.strictEqual(figure.name, "成員2");
+        assert.strictEqual(figure.muted, true);
+        assert.ok(figure.x >= room.rect.x && figure.x <= room.rect.x + room.rect.width);
+        assert.strictEqual(client.state.voice.size, 2);
+    });
+
+    it("有人加入、換頻道、開直播、離開時即時更新", async () => {
+        const { client, server } = await enter();
+
+        fakePlatform.setVoice(GUILD_A, [voice("1", "c0")]);
+        await settle(server);
+        assert.strictEqual(client.state.voice.get("1").channelId, "c0");
+
+        fakePlatform.setVoice(GUILD_A, [voice("1", "c2", { streaming: true })]);
+        await settle(server);
+        assert.strictEqual(client.state.voice.get("1").channelId, "c2");
+        assert.strictEqual(client.state.voice.get("1").streaming, true);
+
+        fakePlatform.setVoice(GUILD_A, []);
+        await settle(server);
+        assert.strictEqual(client.state.voice.size, 0);
+    });
+
+    it("頻道不在地圖上的人不顯示", async () => {
+        fakePlatform.setVoice(GUILD_A, [voice("1", "private-channel")]);
+        const { client } = await enter();
+
+        assert.strictEqual(client.state.voice.size, 0);
+    });
+
+    it("角色帶著帳號 ID，前端才對得上他的語音狀態", async () => {
+        const { client } = await enter();
+
+        assert.strictEqual(client.state.characters.get(client.sessionId).userId, "me");
+    });
+});

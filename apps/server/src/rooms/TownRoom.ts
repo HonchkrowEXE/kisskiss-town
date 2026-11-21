@@ -2,10 +2,11 @@ import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED } from "../town/walkable.js";
 import { layoutTown, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
-import { platform, PlatformUnavailable } from "../platform/platform.js";
+import { platform, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
-import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
+import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure } from "./schema/TownState.js";
+import { placeVoiceFigures } from "../town/placeVoiceFigures.js";
 
 /**
  * 一次最多能累積多遠的移動額度（像素）。額度每秒回復 SPEED，用來吸收網路延遲造成的訊息擠在一起，
@@ -35,8 +36,9 @@ export class TownRoom extends Room<{
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
-  private stopWatchingChannels = () => {};
+  private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
+  private voiceVersion = 0;
 
   static async onAuth(token: string, options: { guildId?: string }) {
     // 驗證失敗時 Colyseus 預設回 523，經 Cloudflare 會被換成它自己的錯誤頁、訊息消失，所以改回 401
@@ -58,10 +60,36 @@ export class TownRoom extends Room<{
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
 
     // 先訂閱再讀，讀的這段時間裡發生的變動才不會漏掉
-    this.stopWatchingChannels = platform().onChannelsChanged(options.guildId, () => {
-      this.refreshLayout(options.guildId).catch((e) => console.error("更新小鎮地圖失敗", e));
-    });
+    const refresh = () => this.refreshLayout(options.guildId).catch((e) => console.error("更新小鎮地圖失敗", e));
+    const refreshVoice = () => this.refreshVoice(options.guildId).catch((e) => console.error("更新語音狀態失敗", e));
+    this.stopWatching = [
+      platform().onChannelsChanged(options.guildId, refresh),
+      platform().onVoiceChanged(options.guildId, refreshVoice),
+    ];
     await this.refreshLayout(options.guildId);
+  }
+
+  /** 依目前語音頻道裡的人，更新站在語音房裡的成員。 */
+  async refreshVoice(guildId: string) {
+    const version = ++this.voiceVersion;
+    let members: VoiceMember[] = [];
+    try {
+      members = await platform().voiceMembers(guildId);
+    } catch (e) {
+      if (!(e instanceof PlatformUnavailable)) throw e;
+    }
+    if (version !== this.voiceVersion) return;
+
+    const placed = placeVoiceFigures(this.layout.rooms, members);
+    const present = new Set(placed.map((p) => p.userId));
+    this.state.voice.forEach((_figure, userId) => {
+      if (!present.has(userId)) this.state.voice.delete(userId);
+    });
+    for (const { userId, ...figure } of placed) {
+      const existing = this.state.voice.get(userId);
+      if (existing) Object.assign(existing, figure);
+      else this.state.voice.set(userId, new VoiceFigure(figure));
+    }
   }
 
   /** 依目前的頻道清單重畫小鎮；站在新牆裡的角色送回廣場。 */
@@ -85,6 +113,9 @@ export class TownRoom extends Room<{
     this.walkable = createWalkable(this.layout.map);
     const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);
+
+    // 房間位置變了，語音房裡的人也要重新站位
+    await this.refreshVoice(guildId);
 
     this.state.characters.forEach((character) => {
       if (this.walkable.canStand(character.position.x, character.position.y)) return;
@@ -151,6 +182,7 @@ export class TownRoom extends Room<{
   onJoin (client: Client, options: any) {
     console.log(client.sessionId, "joined!");
     this.state.characters.set(client.sessionId, new Character({
+      userId: client.auth.id,
       name: client.auth.name,
       position: new Vec2(this.spawnPoint()),
       chips: this.ledger.welcome(chipOwnerOf(client)),
@@ -165,7 +197,7 @@ export class TownRoom extends Room<{
   }
 
   onDispose() {
-    this.stopWatchingChannels();
+    for (const stop of this.stopWatching) stop();
     console.log("room", this.roomId, "disposing...");
   }
 

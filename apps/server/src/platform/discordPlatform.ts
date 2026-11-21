@@ -1,6 +1,6 @@
 import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
-import { PlatformUnavailable, type Platform } from "./platform.js";
+import { PlatformUnavailable, type Platform, type VoiceMember } from "./platform.js";
 
 /** 排序需要的頻道欄位，跟 discord.js 脫鉤，方便測試。 */
 export type RawChannel = TownChannel & {
@@ -26,6 +26,32 @@ export function orderChannels(channels: RawChannel[]): TownChannel[] {
         .map(({ id, name, kind }) => ({ id, name, kind }));
 }
 
+/** 語音狀態需要的欄位，跟 discord.js 脫鉤，方便測試。 */
+export type RawVoiceState = {
+    userId: string;
+    displayName: string | null;
+    channelId: string | null;
+    selfMute: boolean | null;
+    serverMute: boolean | null;
+    selfDeaf: boolean | null;
+    serverDeaf: boolean | null;
+    streaming: boolean | null;
+};
+
+/** 換成小鎮用的語音成員；不在任何語音頻道的略過。 */
+export function toVoiceMembers(states: RawVoiceState[]): VoiceMember[] {
+    return states
+        .filter((s): s is RawVoiceState & { channelId: string } => s.channelId !== null)
+        .map((s) => ({
+            userId: s.userId,
+            name: s.displayName ?? "（沒有名字）",
+            channelId: s.channelId,
+            muted: Boolean(s.selfMute || s.serverMute),
+            deafened: Boolean(s.selfDeaf || s.serverDeaf),
+            streaming: Boolean(s.streaming),
+        }));
+}
+
 const KIND: Partial<Record<ChannelType, TownChannel["kind"]>> = {
     [ChannelType.GuildText]: "text",
     [ChannelType.GuildAnnouncement]: "text",
@@ -46,10 +72,14 @@ export function createDiscordPlatform(token: string | undefined): Platform {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
             onChannelsChanged: () => () => {},
+            voiceMembers: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
+            onVoiceChanged: () => () => {},
         };
     }
 
-    const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
     const ready = new Promise<void>((resolve, reject) => {
         client.once(Events.ClientReady, () => resolve());
         client.login(token).catch((e) => {
@@ -106,6 +136,31 @@ export function createDiscordPlatform(token: string | undefined): Platform {
                 client.off(Events.GuildDelete, onGuild);
                 client.off(Events.GuildRoleUpdate, onRole);
             };
+        },
+
+
+        async voiceMembers(guildId) {
+            await waitReady();
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) return [];
+            return toVoiceMembers(
+                [...guild.voiceStates.cache.values()].map((v) => ({
+                    userId: v.id,
+                    displayName: v.member?.displayName ?? null,
+                    channelId: v.channelId,
+                    selfMute: v.selfMute,
+                    serverMute: v.serverMute,
+                    selfDeaf: v.selfDeaf,
+                    serverDeaf: v.serverDeaf,
+                    streaming: v.streaming,
+                })),
+            );
+        },
+
+        onVoiceChanged(guildId, listener) {
+            const onVoice = (_old: unknown, state: { guild: { id: string } }) => state.guild.id === guildId && listener();
+            client.on(Events.VoiceStateUpdate, onVoice);
+            return () => client.off(Events.VoiceStateUpdate, onVoice);
         },
     };
 }
