@@ -128,6 +128,34 @@ npm run cloudflared
 3. 到 [Issues](../../issues) 找標著 `ready-for-human` 或 `ready-for-agent` 的票
 4. 用 AI coding agent 的話，規則在 [`AGENTS.md`](AGENTS.md)
 
+### 程式怎麼分
+
+```text
+apps/server/src/
+├── rooms/
+│   ├── TownRoom.ts        一座小鎮的骨架：登入、地圖、走動、記下每個人在哪個房間，把事件分給各個功能
+│   ├── Town.ts            功能能看到、能做的事（介面）
+│   └── features/          每個功能一個類別，都繼承 TownFeature
+│       ├── Chips.ts         籌碼：簽到、救濟金
+│       ├── VoiceRooms.ts    語音房：語音裡的人站在房裡、走進去就搬頻道
+│       ├── TextRooms.ts     文字房：看訊息、發言
+│       ├── Slapping.ts      搧巴掌
+│       ├── GameTables.ts    遊戲桌：入座、下注、擲骰
+│       └── AdminSettings.ts 管理員的設定
+├── platform/              平台轉接層（ADR-0008）：遊戲邏輯只透過它碰 Discord
+├── games/                 遊戲規則，純邏輯（輸入狀態和動作，輸出新狀態）
+├── town/                  地圖版面、碰撞、站位等純函式
+└── chips/                 籌碼帳本（ADR-0005）
+```
+
+**加一個新功能：**
+
+1. 在 `rooms/features/` 寫一個類別繼承 `TownFeature`
+2. `messages()` 列出它處理的前端訊息；需要的話覆寫 `onJoin`、`onLeave`、`onRoomChanged`、`onLayoutChanged`
+3. 在 `TownRoom.onCreate` 的 `features` 清單加一行
+4. 要碰 Discord 的話，先在 `platform/platform.ts` 的 `Platform` 加方法，再實作在 `discordPlatform.ts`，測試用的 `test/fakePlatform.ts` 也要加
+5. 在 `test/TownRoom_test.ts` 用真的房間測（`npm test -w server`）
+
 ## 授權
 
 程式碼採用 [MIT](LICENSE)。
