@@ -11,6 +11,8 @@ const colyseus = new Client(location.hostname.endsWith("discordsays.com") ? loca
 try {
     const { guildId } = await login(colyseus);
     const room = await colyseus.joinOrCreate("town", { guildId });
+    // 開發時從 devtools（或自動化測試）看得到房間狀態
+    if (import.meta.env.DEV) (window as any).room = room;
 
     new Phaser.Game({
         parent: app,

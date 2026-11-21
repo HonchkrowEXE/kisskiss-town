@@ -6,3 +6,4 @@ dist/
 .scratch/
 .claude/worktrees/
 *.log
+.playwright-mcp/

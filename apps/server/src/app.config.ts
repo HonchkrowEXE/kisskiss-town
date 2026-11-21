@@ -5,11 +5,11 @@ import { loginWithDiscord } from "./auth/discordLogin.js";
 /**
  * Import your Room files
  */
-import { MyRoom } from "./rooms/MyRoom.js";
+import { TownRoom } from "./rooms/TownRoom.js";
 
 export default defineServer({
   rooms: {
-    town: defineRoom(MyRoom).filterBy(['guildId']),
+    town: defineRoom(TownRoom).filterBy(['guildId']),
   },
 
   express: (app) => {
