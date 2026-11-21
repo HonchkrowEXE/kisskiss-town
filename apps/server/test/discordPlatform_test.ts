@@ -1,5 +1,5 @@
 import assert from "assert";
-import { orderChannels, toVoiceMembers, type RawChannel, type RawVoiceState } from "../src/platform/discordPlatform.js";
+import { describeMessage, orderChannels, toVoiceMembers, type RawChannel, type RawVoiceState } from "../src/platform/discordPlatform.js";
 
 const ch = (id: string, kind: "voice" | "text", position: number, categoryPosition: number | null): RawChannel =>
     ({ id, name: id, kind, position, categoryPosition });
@@ -53,5 +53,13 @@ describe("toVoiceMembers", () => {
 
     it("沒有名字時給一個看得懂的預設", () => {
         assert.strictEqual(toVoiceMembers([state({ displayName: null })])[0].name, "（沒有名字）");
+    });
+});
+
+describe("describeMessage", () => {
+    it("有文字就顯示文字；只有附件或嵌入內容時顯示說明", () => {
+        assert.strictEqual(describeMessage({ content: "嗨", attachments: 1, embeds: 0 }), "嗨");
+        assert.strictEqual(describeMessage({ content: "", attachments: 2, embeds: 0 }), "📎 附件");
+        assert.strictEqual(describeMessage({ content: "", attachments: 0, embeds: 1 }), "（嵌入內容）");
     });
 });

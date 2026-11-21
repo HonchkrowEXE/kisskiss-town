@@ -19,7 +19,19 @@ export type Platform = {
     moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
     /** 在伺服器的通知頻道發一則純文字訊息（不 @ 任何人）；沒有能發的頻道就不發。暫時連不上時丟 PlatformUnavailable。 */
     announce(guildId: string, text: string): Promise<void>;
+    /** 文字頻道最新的訊息，舊的在前。讀不到時丟 TextRefused（原因可以給成員看）；暫時連不上時丟 PlatformUnavailable。 */
+    recentMessages(guildId: string, channelId: string): Promise<TownMessage[]>;
+    /** 這個伺服器的文字頻道有新訊息時呼叫 listener。讀不到訊息內容時不呼叫。回傳取消訂閱的函式。 */
+    onMessage(guildId: string, listener: (channelId: string, message: TownMessage) => void): () => void;
+    /** 以成員的名字與頭像在文字頻道發言（不 @ 任何人）。發不出去時丟 TextRefused；暫時連不上時丟 PlatformUnavailable。 */
+    sendAs(guildId: string, channelId: string, userId: string, name: string, text: string): Promise<void>;
 };
+
+/** 文字頻道裡的一則訊息。 */
+export type TownMessage = { id: string; author: string; content: string; at: number };
+
+/** 讀不到或發不出文字頻道的訊息（例如 bot 權限不夠、沒打開 Message Content）。訊息可以直接顯示給成員看。 */
+export class TextRefused extends Error {}
 
 /** 平台拒絕搬人，例如 bot 缺少「移動成員」或「連接」權限。訊息可以直接顯示給成員看。 */
 export class MoveRefused extends Error {}
@@ -43,7 +55,9 @@ let current: Platform | undefined;
 
 /** 目前使用的平台；第一次用到才建立（才登入 bot）。 */
 export function platform(): Platform {
-    return (current ??= createDiscordPlatform(process.env.DISCORD_BOT_TOKEN));
+    return (current ??= createDiscordPlatform(process.env.DISCORD_BOT_TOKEN, {
+        messageContent: process.env.DISCORD_MESSAGE_CONTENT === "true",
+    }));
 }
 
 /** 測試用：換成假的平台。 */

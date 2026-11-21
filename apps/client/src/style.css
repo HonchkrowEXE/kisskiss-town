@@ -13,6 +13,18 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .touch-stick > div { width: 48px; height: 48px; border-radius: 50%; background: #ffffff80; pointer-events: none; }
 .touch-buttons { position: fixed; right: 24px; bottom: 24px; display: flex; gap: 12px; touch-action: manipulation; }
 .touch-buttons button { width: 64px; height: 64px; border: 0; border-radius: 50%; background: #f2c94c; color: #222; font: 16px sans-serif; }
+.text-panel { position: fixed; right: 16px; top: 48px; bottom: 16px; width: min(320px, calc(100vw - 32px)); display: flex; flex-direction: column; padding: 12px; border-radius: 6px; background: #1d222bee; font: 14px sans-serif; }
+.text-panel[hidden] { display: none; }
+.text-panel h2 { margin: 0 0 8px; font-size: 15px; }
+.text-notice { margin: 0 0 8px; padding: 8px; border-radius: 4px; background: #5c2b29; }
+.text-messages { flex: 1; overflow-y: auto; margin: 0 0 8px; padding: 0; list-style: none; overflow-wrap: anywhere; }
+.text-messages li { margin-bottom: 4px; }
+.text-form { display: flex; gap: 8px; }
+.text-form input { flex: 1; min-width: 0; font: inherit; padding: 4px 8px; border: 0; border-radius: 4px; }
+.text-form button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
+.text-form button:focus-visible, .text-form input:focus-visible { outline: 2px solid #fff; }
+.text-result { margin: 4px 0 0; color: #ff8a80; }
+.text-result:empty { display: none; }
 .table-panel { position: fixed; right: 16px; top: 48px; width: min(280px, calc(100vw - 32px)); padding: 12px; border-radius: 6px; background: #1d2b22ee; font: 14px sans-serif; }
 .table-panel h2 { margin: 0 0 8px; font-size: 15px; }
 .table-panel ul { margin: 0 0 8px; padding-left: 18px; }

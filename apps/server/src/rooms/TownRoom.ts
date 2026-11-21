@@ -2,7 +2,7 @@ import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED } from "../town/walkable.js";
 import { layoutTown, roomAt, type ChannelRoom, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
-import { platform, MoveRefused, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
+import { platform, MoveRefused, PlatformUnavailable, TextRefused, type VoiceMember } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure, GameTable, type Direction } from "./schema/TownState.js";
@@ -20,6 +20,12 @@ const MAX_MOVE_BUDGET = 32;
 
 /** 搧巴掌的冷卻時間（毫秒），每位成員各算各的。 */
 const SLAP_COOLDOWN_MS = 10_000;
+
+/** 在文字房發言的最短間隔（毫秒），每位成員各算各的。 */
+const SAY_INTERVAL_MS = 1000;
+
+/** 一則訊息最多幾個字（Discord 的上限）。 */
+const MAX_MESSAGE_LENGTH = 2000;
 
 /** 離遊戲桌中心多近才能入座（像素）。 */
 const SIT_RANGE = 40;
@@ -55,6 +61,8 @@ export class TownRoom extends Room<{
   private lastSlapAt = new Map<string, number>();
   /** 每張遊戲桌這一局的下注狀況，key 是桌子 ID。 */
   private rounds = new Map<string, DiceRound>();
+  /** 每位成員上次在文字房發言的時間，key 是帳號 ID。 */
+  private lastSayAt = new Map<string, number>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -82,6 +90,7 @@ export class TownRoom extends Room<{
     this.onMessage("stand", (client) => this.stand(client.sessionId));
     this.onMessage("bet", (client) => this.bet(client));
     this.onMessage("roll", (client) => this.roll(client));
+    this.onMessage("say", (client, text: unknown) => this.say(client, text));
     this.onMessage("setSlappable", (client, value: unknown) => {
       if (typeof value !== "boolean" || this.state.characters.get(client.sessionId)?.slappable === value) return;
       this.settings.setSlappable(chipOwnerOf(client), value);
@@ -94,6 +103,12 @@ export class TownRoom extends Room<{
     this.stopWatching = [
       platform().onChannelsChanged(options.guildId, refresh),
       platform().onVoiceChanged(options.guildId, refreshVoice),
+      // 文字頻道的新訊息，送給正站在那間文字房裡的人
+      platform().onMessage(options.guildId, (channelId, message) => {
+        for (const client of this.clients) {
+          if (this.currentRoom.get(client.sessionId) === channelId) client.send("textMessage", { channelId, message });
+        }
+      }),
     ];
     await this.refreshLayout(options.guildId);
   }
@@ -158,7 +173,7 @@ export class TownRoom extends Room<{
         character.position.y = spawn.y;
       }
       // 房間換了位置，重新記下每個人站在哪：沒有主動走進的房間不算「走進」，不會被搬
-      this.currentRoom.set(sessionId, roomAt(this.layout.rooms, character.position.x, character.position.y)?.id);
+      this.placeIn(sessionId, roomAt(this.layout.rooms, character.position.x, character.position.y));
     });
 
     // 房間位置變了，語音房裡的人也要重新站位；失敗不影響地圖
@@ -206,9 +221,64 @@ export class TownRoom extends Room<{
     character.dir = dir;
 
     const room = roomAt(this.layout.rooms, x, y);
-    if (room?.id === this.currentRoom.get(client.sessionId)) return;
-    this.currentRoom.set(client.sessionId, room?.id);
-    if (room?.kind === "voice") void this.moveIntoVoice(client, room);
+    if (this.placeIn(client.sessionId, room) && room?.kind === "voice") void this.moveIntoVoice(client, room);
+  }
+
+  /**
+   * 記下成員現在站在哪個房間；換了房間才回傳 true。
+   * 進文字房時把那個頻道的訊息送給他，離開時讓前端收起訊息面板。
+   */
+  private placeIn(sessionId: string, room: ChannelRoom | undefined) {
+    const before = this.currentRoom.get(sessionId);
+    if (before === room?.id) return false;
+    this.currentRoom.set(sessionId, room?.id);
+    const client = this.clients.find((c) => c.sessionId === sessionId);
+    if (client && room?.kind === "text") void this.openTextRoom(client, room);
+    else if (client && before !== undefined) client.send("textRoom", null);
+    return true;
+  }
+
+  /** 把文字頻道最新的訊息送給剛走進文字房的人；讀不到時送原因，面板顯示說明而不是空白。 */
+  private async openTextRoom(client: Client, room: ChannelRoom) {
+    const send = (messages: unknown[], notice: string | null) =>
+      client.send("textRoom", { channelId: room.id, name: room.name, messages, notice });
+    try {
+      const messages = await platform().recentMessages(client.auth.guildId, room.id);
+      if (this.currentRoom.get(client.sessionId) === room.id) send(messages, null);
+    } catch (e) {
+      if (this.currentRoom.get(client.sessionId) !== room.id) return;
+      if (e instanceof TextRefused) send([], e.message);
+      else if (e instanceof PlatformUnavailable) send([], "暫時連不上 Discord，讀不到這個頻道的訊息");
+      else {
+        console.error("讀文字頻道失敗", e);
+        send([], "讀不到這個頻道的訊息，請稍後再試");
+      }
+    }
+  }
+
+  /** 在文字房裡發言：以成員的名字與頭像發到那個文字頻道。發出去的訊息會經 onMessage 回到面板上。 */
+  private async say(client: Client, text: unknown) {
+    const tell = (message: string) => client.send("textResult", { ok: false, message });
+    const room = this.layout.rooms.find((r) => r.id === this.currentRoom.get(client.sessionId));
+    if (room?.kind !== "text") return tell("要站在文字房裡才能發言");
+    const message = typeof text === "string" ? text.trim() : "";
+    if (!message) return tell("訊息不能是空的");
+    if (message.length > MAX_MESSAGE_LENGTH) return tell(`訊息最多 ${MAX_MESSAGE_LENGTH} 字`);
+    const now = this.clock.currentTime;
+    const last = this.lastSayAt.get(client.auth.id);
+    if (last !== undefined && now - last < SAY_INTERVAL_MS) return tell("發太快了，等一下再發");
+    this.lastSayAt.set(client.auth.id, now);
+
+    try {
+      await platform().sendAs(client.auth.guildId, room.id, client.auth.id, client.auth.name, message);
+    } catch (e) {
+      if (e instanceof TextRefused) tell(e.message);
+      else if (e instanceof PlatformUnavailable) tell("暫時連不上 Discord，訊息沒發出去");
+      else {
+        console.error("在文字頻道發言失敗", e);
+        tell("訊息沒發出去，請稍後再試");
+      }
+    }
   }
 
   /**
@@ -267,7 +337,7 @@ export class TownRoom extends Room<{
     target.position.x = to.x;
     target.position.y = to.y;
     // 被打退不算自己走進房間，不要因此被搬頻道
-    this.currentRoom.set(targetId, roomAt(this.layout.rooms, to.x, to.y)?.id);
+    this.placeIn(targetId, roomAt(this.layout.rooms, to.x, to.y));
     // 對方前端在途中的移動是從舊位置算的；額度歸零讓它們被拒、拉回新位置
     const meter = this.moveMeters.get(targetId);
     if (meter) Object.assign(meter, { budget: 0, at: now });
@@ -301,7 +371,7 @@ export class TownRoom extends Room<{
     me.seatedAt = spot.id;
     me.position.x = spot.seats[seat].x;
     me.position.y = spot.seats[seat].y;
-    this.currentRoom.set(client.sessionId, undefined);
+    this.placeIn(client.sessionId, undefined);
     // 入座前前端送出、還在路上的移動不能把人拉離座位；起身後從座位重新累積額度
     const meter = this.moveMeters.get(client.sessionId);
     if (meter) Object.assign(meter, { budget: 0, at: this.clock.currentTime });

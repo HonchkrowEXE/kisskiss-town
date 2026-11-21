@@ -3,6 +3,7 @@ import { Callbacks, type Room } from "@colyseus/sdk";
 import type { TownState, Direction, VoiceFigure } from "../../server/src/rooms/schema/TownState.js";
 import type { TownMapState } from "../../server/src/town/layoutTown.js";
 import { createWalkable, SPEED, type Walkable } from "../../server/src/town/walkable.js";
+import { isTyping } from "./textPanel.js";
 
 /** hero.svg 裡四個方向的格子順序。 */
 const FRAME: Record<Direction, number> = { down: 0, left: 1, right: 2, up: 3 };
@@ -76,12 +77,12 @@ export class TownScene extends Phaser.Scene {
         const K = Phaser.Input.Keyboard.KeyCodes;
         this.keys = kb.addKeys({
             up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT, w: K.W, a: K.A, s: K.S, d: K.D, slap: K.F, sit: K.E,
-        }) as typeof this.keys;
+        }, false) as typeof this.keys; // false：不攔下按鍵，文字房的輸入框才打得出 w、a、s、d、e、f
         // 搧旁邊的人；搧不搧得到、對方退到哪都由伺服器決定
-        this.keys.slap.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => !event.repeat && this.room.send("slap"));
+        this.keys.slap.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => !event.repeat && !isTyping() && this.room.send("slap"));
         // 在遊戲桌旁按 E 入座，坐著時再按一次起身
         this.keys.sit.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => {
-            if (event.repeat) return;
+            if (event.repeat || isTyping()) return;
             this.room.send(this.room.state.characters?.get(this.room.sessionId)?.seatedAt ? "stand" : "sit");
         });
 
@@ -291,9 +292,10 @@ export class TownScene extends Phaser.Scene {
             this.me.y = mine.position.y;
             this.lastSent = { ...this.me, at: time };
         }
-        const k = this.keys;
-        let dx = Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown) + this.stick.dx;
-        let dy = Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown) + this.stick.dy;
+        // 打字時鍵盤不拿來走路（搖桿照常）
+        const k = isTyping() ? undefined : this.keys;
+        let dx = (k ? Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown) : 0) + this.stick.dx;
+        let dy = (k ? Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown) : 0) + this.stick.dy;
         // 斜走時不要比直走快；搖桿沒推到底時（長度小於 1）走得比較慢
         const length = Math.hypot(dx, dy);
         if (length > 1) [dx, dy] = [dx / length, dy / length];

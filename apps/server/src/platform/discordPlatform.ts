@@ -1,6 +1,6 @@
-import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits, escapeMarkdown } from "discord.js";
+import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits, escapeMarkdown, type Message, type NewsChannel, type TextChannel, type Webhook } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
-import { MoveRefused, PlatformUnavailable, type Platform, type VoiceMember } from "./platform.js";
+import { MoveRefused, PlatformUnavailable, TextRefused, type Platform, type TownMessage, type VoiceMember } from "./platform.js";
 
 /** 排序需要的頻道欄位，跟 discord.js 脫鉤，方便測試。 */
 export type RawChannel = TownChannel & {
@@ -61,10 +61,36 @@ const KIND: Partial<Record<ChannelType, TownChannel["kind"]>> = {
 
 const CHANNEL_EVENTS = [Events.ChannelCreate, Events.ChannelDelete, Events.ChannelUpdate];
 
+/** 文字房一次顯示幾則訊息。 */
+const RECENT_MESSAGES = 30;
+
+const NO_MESSAGE_CONTENT =
+    "bot 還讀不到訊息內容：管理員要到 Discord Developer Portal 的 Bot 頁打開 Message Content Intent，並在伺服器設定 DISCORD_MESSAGE_CONTENT=true";
+
+/** 訊息只有附件或嵌入內容、沒有文字時，顯示一段說明代替。 */
+export function describeMessage(m: { content: string; attachments: number; embeds: number }) {
+    if (m.content) return m.content;
+    if (m.attachments) return "📎 附件";
+    if (m.embeds) return "（嵌入內容）";
+    return "";
+}
+
+function toTownMessage(m: Message): TownMessage {
+    return {
+        id: m.id,
+        author: m.member?.displayName ?? m.author.displayName,
+        content: describeMessage({ content: m.content, attachments: m.attachments.size, embeds: m.embeds.length }),
+        at: m.createdTimestamp,
+    };
+}
+
+/** discord.js 錯誤的錯誤碼，見 https://discord.com/developers/docs/topics/opcodes-and-status-codes */
+const codeOf = (e: unknown) => (e as { code?: number }).code;
+
 /** bot 連上 Discord 最多等多久；連不上就當作暫時讀不到，不要讓進小鎮卡住。 */
 const READY_TIMEOUT_MS = 10_000;
 
-export function createDiscordPlatform(token: string | undefined): Platform {
+export function createDiscordPlatform(token: string | undefined, { messageContent = false } = {}): Platform {
     if (!token) {
         console.warn("沒有設定 DISCORD_BOT_TOKEN：小鎮不會顯示頻道房間");
         return {
@@ -82,10 +108,45 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             announce: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
+            recentMessages: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
+            onMessage: () => () => {},
+            sendAs: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
         };
     }
 
-    const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+    // Message Content 是特權 intent：Developer Portal 沒打開卻要求的話，bot 整個登不進去，所以要明確設定才要
+    const client = new Client({
+        intents: [
+            GatewayIntentBits.Guilds,
+            GatewayIntentBits.GuildVoiceStates,
+            GatewayIntentBits.GuildMessages,
+            ...(messageContent ? [GatewayIntentBits.MessageContent] : []),
+        ],
+    });
+    /** 每個文字頻道用來代替成員發言的 webhook（bot 自己建的那個）。 */
+    const webhooks = new Map<string, Promise<Webhook>>();
+    function webhookFor(channel: TextChannel | NewsChannel) {
+        let hook = webhooks.get(channel.id);
+        if (!hook) {
+            hook = channel
+                .fetchWebhooks()
+                .then((list) => list.find((w) => w.owner?.id === client.user?.id && w.token) ?? channel.createWebhook({ name: "親親小鎮" }));
+            hook.catch(() => webhooks.delete(channel.id)); // 失敗了下次重新找
+            webhooks.set(channel.id, hook);
+        }
+        return hook;
+    }
+    function textChannel(guildId: string, channelId: string) {
+        const channel = client.guilds.cache.get(guildId)?.channels.cache.get(channelId);
+        if (channel?.type !== ChannelType.GuildText && channel?.type !== ChannelType.GuildAnnouncement) {
+            throw new TextRefused("這個文字頻道已經不存在了");
+        }
+        return channel;
+    }
     const ready = new Promise<void>((resolve, reject) => {
         client.once(Events.ClientReady, () => resolve());
         client.login(token).catch((e) => {
@@ -202,6 +263,46 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             if (!channel || !me || !channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return;
             // 名字是成員自己取的，跳脫 Markdown、不解析 @，避免變成格式或 @everyone
             await channel.send({ content: escapeMarkdown(text), allowedMentions: { parse: [] } });
+        },
+
+        async recentMessages(guildId, channelId) {
+            await waitReady();
+            if (!messageContent) throw new TextRefused(NO_MESSAGE_CONTENT);
+            try {
+                const list = await textChannel(guildId, channelId).messages.fetch({ limit: RECENT_MESSAGES });
+                return [...list.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp).map(toTownMessage);
+            } catch (e) {
+                if (codeOf(e) === 50001 || codeOf(e) === 50013) {
+                    throw new TextRefused("bot 沒有讀這個頻道的權限，請管理員給 bot「檢視頻道」和「讀取訊息歷史」");
+                }
+                throw e;
+            }
+        },
+
+        onMessage(guildId, listener) {
+            const onCreate = (m: Message) => messageContent && m.guildId === guildId && listener(m.channelId, toTownMessage(m));
+            client.on(Events.MessageCreate, onCreate);
+            return () => client.off(Events.MessageCreate, onCreate);
+        },
+
+        async sendAs(guildId, channelId, userId, name, text) {
+            await waitReady();
+            const channel = textChannel(guildId, channelId);
+            const avatarURL = (await channel.guild.members.fetch(userId).catch((): null => null))?.displayAvatarURL();
+            // ponytail: webhook 的名字不能含 "discord"、"clyde"，有的話 Discord 會拒絕（50035）；遇到再決定要不要換掉
+            const send = async () => (await webhookFor(channel)).send({ content: text, username: name.slice(0, 80), avatarURL, allowedMentions: { parse: [] } });
+            try {
+                await send().catch((e) => {
+                    if (codeOf(e) !== 10015) throw e;
+                    webhooks.delete(channelId); // webhook 被人刪掉了：重建一個再發一次
+                    return send();
+                });
+            } catch (e) {
+                if (codeOf(e) === 50001 || codeOf(e) === 50013) {
+                    throw new TextRefused("bot 沒有「管理 Webhook」權限，沒辦法用你的名字發言，請管理員給 bot 這個權限");
+                }
+                throw e;
+            }
         },
     };
 }

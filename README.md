@@ -93,7 +93,8 @@ npm test -w server
   - Client Secret 填進 `apps/server/.env.development` 的 `DISCORD_CLIENT_SECRET`。**不要 commit、不要貼到任何地方**
 - [ ] **Activities → Settings**：Supported Platforms 勾你要測的平台。`Enable Activities` 要先有 URL Mapping 才能勾，留到下一節第一次測試時再勾
 - [ ] **Bot**：按 Reset Token，把 token 填進 `apps/server/.env.development` 的 `DISCORD_BOT_TOKEN`。**不要 commit、不要貼到任何地方**。小鎮的房間是用 bot 讀頻道清單長出來的（ADR-0010）
-- [ ] **OAuth2 → URL Generator**：Scopes 勾 `bot`，Bot Permissions 勾 `View Channels`、`Move Members`、`Send Messages`、`Read Message History`，用產生的網址把 bot 加進測試伺服器。不需要打開任何 Privileged Gateway Intents
+- [ ] **OAuth2 → URL Generator**：Scopes 勾 `bot`，Bot Permissions 勾 `View Channels`、`Move Members`、`Send Messages`、`Read Message History`、`Manage Webhooks`（文字房用成員的名字發言），用產生的網址把 bot 加進測試伺服器。已經加過的 bot 可以直接在伺服器設定給 bot 的身分組加上「管理 Webhook」
+- [ ] **Bot → Privileged Gateway Intents**（文字房要讀訊息內容才需要）：打開 `Message Content Intent`，再在 `apps/server/.env.development` 設 `DISCORD_MESSAGE_CONTENT=true`。兩個要一起：只設環境變數、沒打開開關的話 bot 會登不進去
 
 Discord App 也要打開開發者模式：使用者設定 → 進階 → `開發者模式`。
 
