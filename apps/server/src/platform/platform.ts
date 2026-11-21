@@ -8,6 +8,22 @@ export type Platform = {
     channels(guildId: string): Promise<TownChannel[] | null>;
     /** 這個伺服器的頻道有變動（新增、刪除、改名、bot 被加入或移除）時呼叫 listener。回傳取消訂閱的函式。 */
     onChannelsChanged(guildId: string, listener: () => void): () => void;
+    /** 現在在這個伺服器語音頻道裡的成員；bot 不在伺服器裡時是空陣列；暫時連不上時丟 PlatformUnavailable。 */
+    voiceMembers(guildId: string): Promise<VoiceMember[]>;
+    /** 有人加入、離開、換語音頻道，或靜音、拒聽、直播狀態改變時呼叫 listener。回傳取消訂閱的函式。 */
+    onVoiceChanged(guildId: string, listener: () => void): () => void;
+};
+
+/** 在語音頻道裡的一位成員。 */
+export type VoiceMember = {
+    userId: string;
+    name: string;
+    channelId: string;
+    /** 自己靜音或被伺服器靜音。 */
+    muted: boolean;
+    /** 自己拒聽或被伺服器拒聽。 */
+    deafened: boolean;
+    streaming: boolean;
 };
 
 /** 暫時讀不到平台的資料（bot 沒設定、登入失敗、還沒連上）。 */

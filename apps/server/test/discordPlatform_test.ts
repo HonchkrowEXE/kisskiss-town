@@ -1,5 +1,5 @@
 import assert from "assert";
-import { orderChannels, type RawChannel } from "../src/platform/discordPlatform.js";
+import { orderChannels, toVoiceMembers, type RawChannel, type RawVoiceState } from "../src/platform/discordPlatform.js";
 
 const ch = (id: string, kind: "voice" | "text", position: number, categoryPosition: number | null): RawChannel =>
     ({ id, name: id, kind, position, categoryPosition });
@@ -29,5 +29,29 @@ describe("orderChannels", () => {
 
     it("輸出只留小鎮需要的欄位", () => {
         assert.deepStrictEqual(orderChannels([ch("a", "text", 0, null)]), [{ id: "a", name: "a", kind: "text" }]);
+    });
+});
+
+describe("toVoiceMembers", () => {
+    const state = (over: Partial<RawVoiceState>): RawVoiceState => ({
+        userId: "1", displayName: "小明", channelId: "lobby",
+        selfMute: false, serverMute: false, selfDeaf: false, serverDeaf: false, streaming: false, ...over,
+    });
+
+    it("自己靜音或被伺服器靜音都算靜音；拒聽也一樣", () => {
+        const [a, b, c] = toVoiceMembers([state({ selfMute: true }), state({ serverMute: true }), state({ serverDeaf: true })]);
+        assert.deepStrictEqual([a.muted, b.muted, c.deafened], [true, true, true]);
+    });
+
+    it("直播中照實帶過去", () => {
+        assert.strictEqual(toVoiceMembers([state({ streaming: true })])[0].streaming, true);
+    });
+
+    it("不在語音頻道裡的略過", () => {
+        assert.deepStrictEqual(toVoiceMembers([state({ channelId: null })]), []);
+    });
+
+    it("沒有名字時給一個看得懂的預設", () => {
+        assert.strictEqual(toVoiceMembers([state({ displayName: null })])[0].name, "（沒有名字）");
     });
 });
