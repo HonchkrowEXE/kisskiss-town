@@ -15,6 +15,12 @@ const DEFAULT_MAP: TiledMap = JSON.parse(
  */
 const MAX_MOVE_BUDGET = 32;
 
+/** jsonwebtoken 對「token 本身有問題」丟的錯誤；secret 沒設也是 JsonWebTokenError，要另外排除。 */
+const isBadToken = (e: unknown) =>
+  e instanceof Error &&
+  ["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(e.name) &&
+  !/secret/i.test(e.message);
+
 export type MoveMessage = { x: number; y: number; dir: string };
 
 export class TownRoom extends Room<{
