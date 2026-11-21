@@ -18,10 +18,15 @@ try {
     const notice = document.createElement("div");
     notice.className = "notice";
     document.body.append(notice);
-    const show = (text: string) => ((notice.textContent = text), (notice.hidden = !text));
+    /** 顯示提示；給空字串就藏起來。 */
+    function show(text: string) {
+        notice.textContent = text;
+        notice.hidden = text === "";
+    }
     show("");
     room.onDrop(() => show("連線中斷，重新連線中…"));
     room.onReconnect(() => show(""));
+    room.onError((code, message) => show(`小鎮出錯了（${code}）：${message ?? ""}`));
     room.onLeave(() => show("和小鎮的連線中斷了，請關掉親親小鎮再打開"));
 
     new Phaser.Game({

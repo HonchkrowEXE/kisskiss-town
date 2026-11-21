@@ -1,26 +1,31 @@
 import { defineServer, defineRoom, monitor, playground, JWT } from "colyseus";
-import express, { type Request, type Response, type NextFunction } from "express";
-import { loginWithDiscord, LoginError } from "./auth/discordLogin.js";
+import express, { type Request, type RequestHandler } from "express";
+import { loginWithDiscord, LoginError, type TownUser } from "./auth/discordLogin.js";
 
 /**
  * Import your Room files
  */
 import { TownRoom } from "./rooms/TownRoom.js";
 
-/** 小鎮 token 的有效期限。每次打開 Activity 都會重新登入，所以不用太長。 */
-const TOKEN_TTL = "12h";
-
 /**
- * 請求是不是從外面經 Cloudflare（cloudflared 通道或 Discord 的代理）進來的。
- * Cloudflare 一定會加上 cf-ray 標頭；本機瀏覽器直連 Vite 或伺服器時不會有。
+ * 請求是不是本機直連（瀏覽器 → Vite → 伺服器，或直接打伺服器）。預設當成外面來的，三個條件都符合才算本機：
+ * - 連線來自 127.0.0.1／::1（擋區網直連）
+ * - 沒有 cf-ray：Cloudflare（cloudflared 通道、Discord 代理）一定會加，但經 Vite 轉發後來源也是 127.0.0.1
+ * - 沒有 x-forwarded-for：ngrok 這類通道和一般反向代理會加；Vite 的 proxy 預設不加
+ * ponytail: 正式環境要設 NODE_ENV=production，開發工具才完全不掛上去；部署那張票要記得
  */
-const fromOutside = (req: Request) => req.headers["cf-ray"] !== undefined;
-
-/** 開發工具只給本機用：經通道進來的請求一律擋掉。 */
-function localOnly(req: Request, res: Response, next: NextFunction) {
-  if (fromOutside(req)) res.status(403).send({ error: "開發工具只能在本機使用" });
-  else next();
+export function isLocalRequest(req: Request) {
+  const ip = req.socket.remoteAddress ?? "";
+  const loopback = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  return loopback && req.headers["cf-ray"] === undefined && req.headers["x-forwarded-for"] === undefined;
 }
+
+/** 開發工具只給本機用；外面來的請求當作它不存在，交給後面的路由（最後是 404）。 */
+const localOnly = (handler: RequestHandler): RequestHandler => (req, res, next) =>
+  isLocalRequest(req) ? handler(req, res, next) : next();
+
+/** 簽發小鎮 token。每次打開 Activity 都會重新登入，所以期限不用太長。 */
+const signTownToken = (user: TownUser) => JWT.sign(user, { expiresIn: "12h" });
 
 export default defineServer({
   rooms: {
@@ -50,13 +55,13 @@ export default defineServer({
 
       // 本機在一般瀏覽器測試用的假登入：要在 .env.development 明確打開，而且只接受本機直連的請求
       if (code === "mock_code") {
-        if (process.env.ALLOW_MOCK_LOGIN !== "true" || fromOutside(req)) {
+        if (process.env.ALLOW_MOCK_LOGIN !== "true" || !isLocalRequest(req)) {
           res.status(403).send({ error: "假登入只能在本機、打開 ALLOW_MOCK_LOGIN 時使用" });
           return;
         }
         const id = Math.random().toString(36).slice(2, 10);
         const user = { id, name: `測試員 ${id}`, guildId };
-        res.send({ access_token: "mocked", token: await JWT.sign(user, { expiresIn: TOKEN_TTL }), user });
+        res.send({ access_token: "mocked", token: await signTownToken(user), user });
         return;
       }
 
@@ -70,7 +75,7 @@ export default defineServer({
 
       try {
         const { accessToken, user } = await loginWithDiscord(code, guildId, { fetch, clientId, clientSecret });
-        res.send({ access_token: accessToken, token: await JWT.sign(user, { expiresIn: TOKEN_TTL }), user });
+        res.send({ access_token: accessToken, token: await signTownToken(user), user });
       } catch (e) {
         if (e instanceof LoginError) {
           res.status(400).send({ error: e.message });
@@ -87,8 +92,8 @@ export default defineServer({
      * 只在開發環境、而且只給本機用：經通道或正式環境公開的話，任何人都能看到所有小鎮的成員
      */
     if (process.env.NODE_ENV !== "production") {
-      app.use("/", localOnly, playground());
-      app.use("/colyseus", localOnly, monitor());
+      app.use("/", localOnly(playground()));
+      app.use("/colyseus", localOnly(monitor()));
     }
 
     //

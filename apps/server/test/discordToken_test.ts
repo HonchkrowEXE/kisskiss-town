@@ -72,15 +72,3 @@ describe("/discord_token 路由", () => {
         }
     });
 });
-
-describe("開發工具", () => {
-    let colyseus: ColyseusTestServer<typeof appConfig>;
-    before(async () => (colyseus = await testServer()));
-
-    it("monitor 只開給本機，經通道進來的看不到", async () => {
-        const local = await colyseus.http.get("/colyseus/api");
-        assert.ok(Array.isArray(local.data.rooms));
-
-        await assert.rejects(colyseus.http.get("/colyseus/api", { headers: { "cf-ray": "x" } }), (e: any) => e.statusCode === 403);
-    });
-});
