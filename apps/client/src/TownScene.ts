@@ -140,7 +140,7 @@ export class TownScene extends Phaser.Scene {
         const view = this.views.get(sessionId);
         if (!view) return;
         view.sprite.setTint(0xff6666);
-        this.time.delayedCall(200, () => view.sprite.clearTint());
+        this.time.delayedCall(200, () => view.sprite.active && view.sprite.clearTint()); // 對方可能已經離開
         const pop = this.add
             .text(view.sprite.x, view.sprite.y - LABEL_OFFSET - 6, "啪！", { fontSize: "8px", color: "#ffeb3b", resolution: 3, stroke: "#000", strokeThickness: 2 })
             .setOrigin(0.5, 1)
