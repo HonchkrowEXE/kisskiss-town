@@ -662,8 +662,9 @@ describe("搧巴掌", () => {
         assert.strictEqual(again.state.characters.get(again.sessionId).slappable, false);
     });
 
-    it("被打退後，從舊位置送來的移動被拒絕，不能抵銷打退", async () => {
+    it("被打退後，從舊位置送來的移動被拒絕，不能抵銷打退（對方原本站著不動也一樣）", async () => {
         const { a, b, spawn } = await neighbours();
+        await new Promise((r) => setTimeout(r, 500)); // 站著不動夠久，移動額度早就回滿
         await a.slap();
         const rejected: unknown[] = [];
         b.client.onMessage("moveRejected", (p: unknown) => rejected.push(p));

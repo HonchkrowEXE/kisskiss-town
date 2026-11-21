@@ -72,7 +72,7 @@ export class TownRoom extends Room<{
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
     this.onMessage("slap", (client) => this.slap(client));
     this.onMessage("setSlappable", (client, value: unknown) => {
-      if (typeof value !== "boolean") return;
+      if (typeof value !== "boolean" || this.state.characters.get(client.sessionId)?.slappable === value) return;
       this.settings.setSlappable(chipOwnerOf(client), value);
       this.forEachCharacterOf(client.auth.id, (character) => (character.slappable = value));
     });
@@ -248,7 +248,7 @@ export class TownRoom extends Room<{
     this.currentRoom.set(targetId, roomAt(this.layout.rooms, to.x, to.y)?.id);
     // 對方前端在途中的移動是從舊位置算的；額度歸零讓它們被拒、拉回新位置
     const meter = this.moveMeters.get(targetId);
-    if (meter) meter.budget = 0;
+    if (meter) Object.assign(meter, { budget: 0, at: now });
     this.clients.find((c) => c.sessionId === targetId)?.send("slapped", { x: to.x, y: to.y, dir: target.dir });
 
     this.broadcast("slap", { from: client.sessionId, to: targetId });
