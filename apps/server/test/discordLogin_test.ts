@@ -1,5 +1,5 @@
 import assert from "assert";
-import { loginWithDiscord } from "../src/auth/discordLogin.js";
+import { loginWithDiscord, LoginError } from "../src/auth/discordLogin.js";
 
 const GUILD_ID = "9000000000000000001";
 
@@ -81,5 +81,14 @@ describe("loginWithDiscord", () => {
 
         await assert.rejects(loginWithDiscord("good-code", "", deps(fetch)));
         assert.strictEqual(calls.length, 0);
+    });
+});
+
+describe("loginWithDiscord：DC 回應不完整", () => {
+    it("換 token 回 200 卻沒有 access_token 時丟出錯誤，且不再往下呼叫", async () => {
+        const { fetch, calls } = fakeFetch({ "/oauth2/token": { status: 200, body: {} } });
+
+        await assert.rejects(loginWithDiscord("good-code", GUILD_ID, deps(fetch)), LoginError);
+        assert.deepStrictEqual(calls.map((u) => new URL(u).pathname), ["/api/oauth2/token"]);
     });
 });
