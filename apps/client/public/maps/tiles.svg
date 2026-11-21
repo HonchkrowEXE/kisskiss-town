@@ -1,39 +1,87 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="16" shape-rendering="crispEdges">
-  <!-- 家的風格。順序要和 apps/server/src/town/layoutTown.ts 的 TILE 一致 -->
-  <!-- 第 1 格：走廊、玄關（米色地毯，細格紋） -->
-  <rect x="0" y="0" width="16" height="16" fill="#e8d9b8"/>
-  <rect x="0" y="0" width="16" height="1" fill="#efe3c8"/>
-  <rect x="0" y="8" width="16" height="1" fill="#dccaa3"/>
-  <rect x="0" y="0" width="1" height="16" fill="#dccaa3"/>
-  <rect x="8" y="0" width="1" height="16" fill="#efe3c8"/>
-  <rect x="4" y="4" width="1" height="1" fill="#d2bd93"/>
-  <rect x="12" y="12" width="1" height="1" fill="#d2bd93"/>
-  <!-- 第 2 格：牆（暖色壁紙＋木頭踢腳板） -->
-  <rect x="16" y="0" width="16" height="16" fill="#c98f6b"/>
-  <rect x="16" y="0" width="16" height="2" fill="#b07a58"/>
-  <rect x="19" y="2" width="1" height="10" fill="#d4a07e"/>
-  <rect x="24" y="2" width="1" height="10" fill="#d4a07e"/>
-  <rect x="29" y="2" width="1" height="10" fill="#d4a07e"/>
-  <rect x="16" y="12" width="16" height="1" fill="#f0e2cf"/>
-  <rect x="16" y="13" width="16" height="3" fill="#7a4e33"/>
-  <!-- 第 3 格：語音房＝客廳（溫暖的木地板，錯開的木條） -->
-  <rect x="32" y="0" width="16" height="16" fill="#c08a52"/>
-  <rect x="32" y="3" width="16" height="1" fill="#a8743f"/>
-  <rect x="32" y="7" width="16" height="1" fill="#a8743f"/>
-  <rect x="32" y="11" width="16" height="1" fill="#a8743f"/>
-  <rect x="32" y="15" width="16" height="1" fill="#a8743f"/>
-  <rect x="37" y="0" width="1" height="3" fill="#a8743f"/>
-  <rect x="43" y="4" width="1" height="3" fill="#a8743f"/>
-  <rect x="35" y="8" width="1" height="3" fill="#a8743f"/>
-  <rect x="45" y="12" width="1" height="3" fill="#a8743f"/>
-  <rect x="33" y="1" width="2" height="1" fill="#cf9a63"/>
-  <rect x="40" y="9" width="2" height="1" fill="#cf9a63"/>
-  <!-- 第 4 格：文字房＝書房（淺色磁磚） -->
-  <rect x="48" y="0" width="16" height="16" fill="#dfe7ea"/>
-  <rect x="48" y="0" width="8" height="8" fill="#eef3f5"/>
-  <rect x="56" y="8" width="8" height="8" fill="#eef3f5"/>
-  <rect x="48" y="7" width="16" height="1" fill="#c3cfd4"/>
-  <rect x="48" y="15" width="16" height="1" fill="#c3cfd4"/>
-  <rect x="55" y="0" width="1" height="16" fill="#c3cfd4"/>
-  <rect x="63" y="0" width="1" height="16" fill="#c3cfd4"/>
+  <!-- 家的風格，細緻版：三階明暗、光從左上來。順序要和 apps/server/src/town/layoutTown.ts 的 TILE 一致 -->
+
+  <!-- 第 1 格：走廊、玄關的地毯（米色織紋，四邊接得起來） -->
+  <rect x="0" y="0" width="16" height="16" fill="#e3cfa6"/>
+  <rect x="0" y="0" width="16" height="1" fill="#ead9b8"/>
+  <rect x="0" y="8" width="16" height="1" fill="#ead9b8"/>
+  <rect x="0" y="7" width="16" height="1" fill="#d6be90"/>
+  <rect x="0" y="15" width="16" height="1" fill="#d6be90"/>
+  <rect x="3" y="3" width="2" height="2" fill="#d3b98a"/>
+  <rect x="4" y="2" width="1" height="1" fill="#d3b98a"/>
+  <rect x="11" y="11" width="2" height="2" fill="#d3b98a"/>
+  <rect x="12" y="10" width="1" height="1" fill="#d3b98a"/>
+  <rect x="11" y="3" width="1" height="1" fill="#c9ad7c"/>
+  <rect x="3" y="11" width="1" height="1" fill="#c9ad7c"/>
+  <rect x="7" y="4" width="1" height="1" fill="#ecdcbd"/>
+  <rect x="8" y="12" width="1" height="1" fill="#ecdcbd"/>
+  <rect x="14" y="5" width="1" height="1" fill="#ecdcbd"/>
+  <rect x="1" y="13" width="1" height="1" fill="#ecdcbd"/>
+
+  <!-- 第 2 格：牆（上緣木頭收邊、條紋壁紙、腰線、下半截木護牆板、踢腳板） -->
+  <rect x="16" y="0" width="16" height="3" fill="#6b4430"/>
+  <rect x="16" y="0" width="16" height="1" fill="#8a5a40"/>
+  <rect x="16" y="2" width="16" height="1" fill="#55361f"/>
+  <rect x="16" y="3" width="16" height="5" fill="#f1e2c4"/>
+  <rect x="18" y="3" width="1" height="5" fill="#e6d2ab"/>
+  <rect x="22" y="3" width="1" height="5" fill="#e6d2ab"/>
+  <rect x="26" y="3" width="1" height="5" fill="#e6d2ab"/>
+  <rect x="30" y="3" width="1" height="5" fill="#e6d2ab"/>
+  <rect x="20" y="5" width="1" height="1" fill="#d99a8f"/>
+  <rect x="28" y="5" width="1" height="1" fill="#d99a8f"/>
+  <rect x="16" y="8" width="16" height="1" fill="#c99a6b"/>
+  <rect x="16" y="9" width="16" height="4" fill="#b07a52"/>
+  <rect x="16" y="9" width="16" height="1" fill="#c48e64"/>
+  <rect x="18" y="10" width="5" height="2" fill="#a06c46"/>
+  <rect x="25" y="10" width="5" height="2" fill="#a06c46"/>
+  <rect x="18" y="10" width="5" height="1" fill="#95633f"/>
+  <rect x="25" y="10" width="5" height="1" fill="#95633f"/>
+  <rect x="16" y="13" width="16" height="3" fill="#5a3926"/>
+  <rect x="16" y="13" width="16" height="1" fill="#74503a"/>
+
+  <!-- 第 3 格：語音房＝客廳的木地板（錯開的木條、木紋、釘子） -->
+  <rect x="32" y="0" width="16" height="16" fill="#b9814b"/>
+  <rect x="32" y="0" width="16" height="1" fill="#c99360"/>
+  <rect x="32" y="4" width="16" height="1" fill="#c99360"/>
+  <rect x="32" y="8" width="16" height="1" fill="#c99360"/>
+  <rect x="32" y="12" width="16" height="1" fill="#c99360"/>
+  <rect x="32" y="3" width="16" height="1" fill="#93602f"/>
+  <rect x="32" y="7" width="16" height="1" fill="#93602f"/>
+  <rect x="32" y="11" width="16" height="1" fill="#93602f"/>
+  <rect x="32" y="15" width="16" height="1" fill="#93602f"/>
+  <rect x="38" y="0" width="1" height="3" fill="#93602f"/>
+  <rect x="44" y="4" width="1" height="3" fill="#93602f"/>
+  <rect x="35" y="8" width="1" height="3" fill="#93602f"/>
+  <rect x="41" y="12" width="1" height="3" fill="#93602f"/>
+  <rect x="34" y="1" width="3" height="1" fill="#a87443"/>
+  <rect x="40" y="2" width="4" height="1" fill="#a87443"/>
+  <rect x="33" y="5" width="5" height="1" fill="#a87443"/>
+  <rect x="38" y="9" width="5" height="1" fill="#a87443"/>
+  <rect x="43" y="13" width="3" height="1" fill="#a87443"/>
+  <rect x="33" y="14" width="4" height="1" fill="#a87443"/>
+  <rect x="37" y="1" width="1" height="1" fill="#7b4f27"/>
+  <rect x="43" y="5" width="1" height="1" fill="#7b4f27"/>
+  <rect x="34" y="9" width="1" height="1" fill="#7b4f27"/>
+  <rect x="40" y="13" width="1" height="1" fill="#7b4f27"/>
+
+  <!-- 第 4 格：文字房＝書房的磁磚（米白與淺灰藍交錯、填縫、每塊左上亮一點） -->
+  <rect x="48" y="0" width="16" height="16" fill="#cfd9de"/>
+  <rect x="48" y="0" width="7" height="7" fill="#f1ede4"/>
+  <rect x="56" y="8" width="7" height="7" fill="#f1ede4"/>
+  <rect x="56" y="0" width="7" height="7" fill="#dce5ea"/>
+  <rect x="48" y="8" width="7" height="7" fill="#dce5ea"/>
+  <rect x="48" y="0" width="7" height="1" fill="#fbf8f1"/>
+  <rect x="56" y="8" width="7" height="1" fill="#fbf8f1"/>
+  <rect x="56" y="0" width="7" height="1" fill="#e9f0f3"/>
+  <rect x="48" y="8" width="7" height="1" fill="#e9f0f3"/>
+  <rect x="48" y="0" width="1" height="7" fill="#fbf8f1"/>
+  <rect x="56" y="8" width="1" height="7" fill="#fbf8f1"/>
+  <rect x="56" y="0" width="1" height="7" fill="#e9f0f3"/>
+  <rect x="48" y="8" width="1" height="7" fill="#e9f0f3"/>
+  <rect x="55" y="0" width="1" height="16" fill="#b4c1c8"/>
+  <rect x="63" y="0" width="1" height="16" fill="#b4c1c8"/>
+  <rect x="48" y="7" width="16" height="1" fill="#b4c1c8"/>
+  <rect x="48" y="15" width="16" height="1" fill="#b4c1c8"/>
+  <rect x="52" y="3" width="1" height="1" fill="#e2dccf"/>
+  <rect x="60" y="11" width="1" height="1" fill="#e2dccf"/>
 </svg>
