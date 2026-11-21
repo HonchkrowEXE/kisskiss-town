@@ -9,12 +9,18 @@ const FRAME: Record<Direction, number> = { down: 0, left: 1, right: 2, up: 3 };
 /** 走動時多久送一次位置給伺服器（毫秒）。 */
 const SEND_INTERVAL = 50;
 
-type Avatar = { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text };
+/** 名字標籤在腳底上方幾個像素。 */
+const LABEL_OFFSET = 13;
+
+/** 一幀最多走多久（毫秒）：分頁切回前景時 delta 會很大，一步跨太遠可能穿牆。 */
+const MAX_STEP_MS = 50;
+
+type CharacterView = { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text };
 
 export class TownScene extends Phaser.Scene {
     private room: Room<any, TownState>;
     private walkable!: Walkable;
-    private avatars = new Map<string, Avatar>();
+    private views = new Map<string, CharacterView>();
     private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
 
     /** 自己的位置由前端先走、伺服器驗證；不合法時伺服器會傳 moveRejected 拉回來。 */
@@ -52,29 +58,30 @@ export class TownScene extends Phaser.Scene {
 
         const callbacks = Callbacks.get(this.room);
 
-        callbacks.onAdd("players", (player, sessionId) => {
-            const { x, y } = player.position;
-            const sprite = this.add.sprite(x, y, "hero", FRAME[player.dir as Direction] ?? 0).setOrigin(0.5, 0.75);
+        callbacks.onAdd("characters", (character, sessionId) => {
+            const { x, y } = character.position;
+            const sprite = this.add.sprite(x, y, "hero", FRAME[character.dir as Direction] ?? 0).setOrigin(0.5, 0.75);
             const label = this.add
-                .text(x, y - 13, player.name, { fontSize: "8px", color: "#fff", resolution: 3 })
+                .text(x, y - LABEL_OFFSET, character.name, { fontSize: "8px", color: "#fff", resolution: 3 })
                 .setOrigin(0.5, 1);
-            this.avatars.set(sessionId, { sprite, label });
+            this.views.set(sessionId, { sprite, label });
             if (sessionId === this.room.sessionId) {
-                this.me = { x, y, dir: player.dir as Direction };
+                this.me = { x, y, dir: character.dir as Direction };
                 this.lastSent = { ...this.me, at: 0 };
             }
         });
 
-        callbacks.onRemove("players", (_player, sessionId) => {
-            const avatar = this.avatars.get(sessionId);
-            avatar?.sprite.destroy();
-            avatar?.label.destroy();
-            this.avatars.delete(sessionId);
+        callbacks.onRemove("characters", (_character, sessionId) => {
+            const view = this.views.get(sessionId);
+            view?.sprite.destroy();
+            view?.label.destroy();
+            this.views.delete(sessionId);
         });
 
-        this.room.onMessage("moveRejected", (pos: { x: number; y: number }) => {
+        this.room.onMessage("moveRejected", (pos: { x: number; y: number; dir: Direction }) => {
             this.me.x = pos.x;
             this.me.y = pos.y;
+            this.me.dir = pos.dir;
             this.lastSent = { ...this.me, at: this.time.now };
         });
     }
@@ -83,16 +90,16 @@ export class TownScene extends Phaser.Scene {
         this.walkMe(time, delta);
 
         // 每個角色往伺服器上的位置滑過去；自己的角色直接用前端算的位置
-        this.room.state.players?.forEach((player, sessionId) => {
-            const avatar = this.avatars.get(sessionId);
-            if (!avatar) return;
+        this.room.state.characters?.forEach((character, sessionId) => {
+            const view = this.views.get(sessionId);
+            if (!view) return;
             const isMe = sessionId === this.room.sessionId;
-            const target = isMe ? this.me : player.position;
+            const target = isMe ? this.me : character.position;
             const t = isMe ? 1 : Math.min(1, delta / 100);
-            const x = Phaser.Math.Linear(avatar.sprite.x, target.x, t);
-            const y = Phaser.Math.Linear(avatar.sprite.y, target.y, t);
-            avatar.sprite.setPosition(x, y).setFrame(FRAME[(isMe ? this.me.dir : player.dir) as Direction] ?? 0);
-            avatar.label.setPosition(x, y - 13);
+            const x = Phaser.Math.Linear(view.sprite.x, target.x, t);
+            const y = Phaser.Math.Linear(view.sprite.y, target.y, t);
+            view.sprite.setPosition(x, y).setFrame(FRAME[(isMe ? this.me.dir : character.dir) as Direction] ?? 0);
+            view.label.setPosition(x, y - LABEL_OFFSET);
         });
     }
 
@@ -104,7 +111,7 @@ export class TownScene extends Phaser.Scene {
 
         if (dx || dy) {
             // 斜走時不要比直走快
-            const step = (SPEED * delta) / 1000 / Math.hypot(dx, dy);
+            const step = (SPEED * Math.min(delta, MAX_STEP_MS)) / 1000 / Math.hypot(dx, dy);
             const nx = this.me.x + dx * step;
             const ny = this.me.y + dy * step;
             if (this.walkable.canStand(nx, this.me.y)) this.me.x = nx;

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED, type TiledMap } from "../town/walkable.js";
-import { DIRECTIONS, TownState, Player, Vec2 } from "./schema/TownState.js";
+import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 
 // ponytail: 每座小鎮都用前端內建的預設地圖；#5（匯入地圖）改成讀各伺服器自己的地圖
 const DEFAULT_MAP: TiledMap = JSON.parse(
@@ -24,8 +24,8 @@ export class TownRoom extends Room<{
   state = new TownState();
   walkable = createWalkable(DEFAULT_MAP);
 
-  /** 每位成員剩下的移動額度與上次結算的時間，key 是 sessionId。 */
-  private moveBudget = new Map<string, { budget: number; at: number }>();
+  /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
+  private moveMeters = new Map<string, { budget: number; at: number }>();
 
   static async onAuth(token: string, options: { guildId?: string }) {
     const user = await JWT.verify<TownUser>(token);
@@ -42,45 +42,45 @@ export class TownRoom extends Room<{
 
   /** 前端算好的新位置。不合法就不採用，並把伺服器上的位置傳回去讓前端拉回來。 */
   private move(client: Client, message: MoveMessage) {
-    const player = this.state.players.get(client.sessionId);
-    const meter = this.moveBudget.get(client.sessionId);
-    if (!player || !meter) return;
+    const character = this.state.characters.get(client.sessionId);
+    const meter = this.moveMeters.get(client.sessionId);
+    if (!character || !meter) return;
 
     const now = this.clock.currentTime;
     meter.budget = Math.min(MAX_MOVE_BUDGET, meter.budget + (SPEED * (now - meter.at)) / 1000);
     meter.at = now;
 
     const { x, y, dir } = message ?? ({} as MoveMessage);
-    const distance = Math.hypot(x - player.position.x, y - player.position.y);
+    const distance = Math.hypot(x - character.position.x, y - character.position.y);
     const ok =
       DIRECTIONS.includes(dir as any) &&
-      this.walkable.canStand(x, y) && // 也擋掉不是數字的座標
-      distance <= meter.budget;
+      distance <= meter.budget && // NaN 比大小一律是 false，也擋掉不是數字的座標
+      this.walkable.canWalk(character.position, { x, y });
 
     if (!ok) {
-      client.send("moveRejected", { x: player.position.x, y: player.position.y });
+      client.send("moveRejected", { x: character.position.x, y: character.position.y, dir: character.dir });
       return;
     }
 
     meter.budget -= distance;
-    player.position.x = x;
-    player.position.y = y;
-    player.dir = dir;
+    character.position.x = x;
+    character.position.y = y;
+    character.dir = dir;
   }
 
   onJoin (client: Client, options: any) {
     console.log(client.sessionId, "joined!");
-    this.state.players.set(client.sessionId, new Player({
+    this.state.characters.set(client.sessionId, new Character({
       name: client.auth.name,
       position: new Vec2(this.walkable.randomSpawn()),
     }));
-    this.moveBudget.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
+    this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
   }
 
   onLeave (client: Client, code: CloseCode) {
     console.log(client.sessionId, "left!");
-    this.state.players.delete(client.sessionId);
-    this.moveBudget.delete(client.sessionId);
+    this.state.characters.delete(client.sessionId);
+    this.moveMeters.delete(client.sessionId);
   }
 
   onDispose() {

@@ -51,3 +51,25 @@ describe("createWalkable", () => {
         }
     });
 });
+
+describe("canWalk", () => {
+    // 3×1：地 牆 地
+    const thin = createWalkable({
+        width: 3, height: 1, tilewidth: 16, tileheight: 16,
+        layers: [{ type: "tilelayer", data: [1, 2, 1] }],
+        tilesets: [{ firstgid: 1, tiles: [{ id: 1, properties: [{ name: "collides", value: true }] }] }],
+    });
+
+    it("同一格地板裡走動可以", () => {
+        assert.ok(walk.canWalk({ x: 24, y: 24 }, { x: 40, y: 24 }));
+    });
+
+    it("終點和起點都站得住，但中間隔著牆就不行", () => {
+        assert.ok(thin.canStand(8, 8) && thin.canStand(40, 8));
+        assert.ok(!thin.canWalk({ x: 8, y: 8 }, { x: 40, y: 8 }));
+    });
+
+    it("原地不動可以", () => {
+        assert.ok(walk.canWalk({ x: 24, y: 24 }, { x: 24, y: 24 }));
+    });
+});
