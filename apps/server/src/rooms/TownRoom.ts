@@ -38,6 +38,8 @@ export class TownRoom extends Room<{
   private moveMeters = new Map<string, { budget: number; at: number }>();
   /** 每位成員現在站在哪個房間（頻道 ID），走進新的語音房時才搬頻道。 */
   private currentRoom = new Map<string, string | undefined>();
+  /** 正在幫誰搬頻道、最後想去哪個語音房，key 是帳號 ID。 */
+  private movingTo = new Map<string, ChannelRoom>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -119,11 +121,14 @@ export class TownRoom extends Room<{
     this.state.map = JSON.stringify(map);
 
     // 先把站在新牆裡的角色送回廣場，跟新地圖在同一次同步送出
-    this.state.characters.forEach((character) => {
-      if (this.walkable.canStand(character.position.x, character.position.y)) return;
-      const spawn = this.spawnPoint();
-      character.position.x = spawn.x;
-      character.position.y = spawn.y;
+    this.state.characters.forEach((character, sessionId) => {
+      if (!this.walkable.canStand(character.position.x, character.position.y)) {
+        const spawn = this.spawnPoint();
+        character.position.x = spawn.x;
+        character.position.y = spawn.y;
+      }
+      // 房間換了位置，重新記下每個人站在哪：沒有主動走進的房間不算「走進」，不會被搬
+      this.currentRoom.set(sessionId, roomAt(this.layout.rooms, character.position.x, character.position.y)?.id);
     });
 
     // 房間位置變了，語音房裡的人也要重新站位；失敗不影響地圖
@@ -168,22 +173,40 @@ export class TownRoom extends Room<{
     const room = roomAt(this.layout.rooms, x, y);
     if (room?.id === this.currentRoom.get(client.sessionId)) return;
     this.currentRoom.set(client.sessionId, room?.id);
-    if (room?.kind === "voice") {
-      this.moveIntoVoice(client, room).catch((e) => console.error("搬語音頻道失敗", e));
-    }
+    if (room?.kind === "voice") void this.moveIntoVoice(client, room);
   }
 
-  /** 走進語音房：請平台把這位成員搬到那個語音頻道，結果告訴他。 */
+  /**
+   * 走進語音房：請平台把這位成員搬到那個語音頻道，結果告訴他。
+   * 同一個人同時只送一個搬人請求；搬的途中又走進別的語音房，搬完再去最後走進的那間（快速進出門不會排一長串請求）。
+   */
   private async moveIntoVoice(client: Client, room: ChannelRoom) {
+    const userId = client.auth.id;
+    const inFlight = this.movingTo.has(userId);
+    this.movingTo.set(userId, room);
+    if (inFlight) return;
+
     const say = (ok: boolean, message: string) => client.send("voiceMove", { ok, message });
     try {
-      const result = await platform().moveToVoice(client.auth.guildId, client.auth.id, room.id);
-      if (result === "moved") say(true, `已切到語音頻道「${room.name}」`);
-      if (result === "not-in-voice") say(false, "請先在 Discord 加入任一個語音頻道，走進語音房才能幫你切換");
-    } catch (e) {
-      if (e instanceof MoveRefused) say(false, e.message);
-      else if (e instanceof PlatformUnavailable) say(false, "暫時連不上 Discord，沒辦法切換語音頻道");
-      else throw e;
+      let target: ChannelRoom | undefined;
+      while ((target = this.movingTo.get(userId)) !== undefined) {
+        try {
+          const result = await platform().moveToVoice(client.auth.guildId, userId, target.id);
+          if (this.movingTo.get(userId) !== target) continue; // 途中又換了房間，直接去新的
+          if (result === "moved") say(true, `已切到語音頻道「${target.name}」`);
+          if (result === "not-in-voice") say(false, "請先在 Discord 加入任一個語音頻道，走進語音房才能幫你切換");
+        } catch (e) {
+          if (e instanceof MoveRefused) say(false, e.message);
+          else if (e instanceof PlatformUnavailable) say(false, "暫時連不上 Discord，沒辦法切換語音頻道");
+          else {
+            console.error("搬語音頻道失敗", e);
+            say(false, "切換語音頻道失敗，請稍後再試");
+          }
+        }
+        if (this.movingTo.get(userId) === target) break;
+      }
+    } finally {
+      this.movingTo.delete(userId);
     }
   }
 

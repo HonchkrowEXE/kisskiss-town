@@ -43,9 +43,9 @@ export class TownScene extends Phaser.Scene {
     /** 目前畫在畫面上的地圖相關物件，地圖換掉時一起清掉。 */
     private mapObjects: Phaser.GameObjects.GameObject[] = [];
     private tilemap?: Phaser.Tilemaps.Tilemap;
-    /** 伺服器要提示成員的話（例如還讀不到頻道）。用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面。 */
     /** 短暫顯示的提示，例如走進語音房後的結果。 */
     private toast = Object.assign(document.body.appendChild(document.createElement("div")), { className: "toast", hidden: true, role: "status" });
+    /** 伺服器要提示成員的話（例如還讀不到頻道）。用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面。 */
     private notice = Object.assign(document.body.appendChild(document.createElement("div")), { className: "map-notice", hidden: true });
 
     /** 自己的位置由前端先走、伺服器驗證；不合法時伺服器會傳 moveRejected 拉回來。 */

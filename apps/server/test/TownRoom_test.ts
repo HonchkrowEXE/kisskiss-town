@@ -510,7 +510,7 @@ describe("走進語音房就搬頻道", () => {
         await enter();
         await stepDown();
         const { y } = server.state.characters.get(client.sessionId).position;
-        assert.ok(y > server.layout.rooms[0].rect.y + 16, );
+        assert.ok(y > server.layout.rooms[0].rect.y + 16, `第三步沒走成，停在 y=${y}`);
 
         assert.strictEqual(fakePlatform.moves.length, 1);
     });
@@ -522,6 +522,48 @@ describe("走進語音房就搬頻道", () => {
 
         assert.strictEqual(results.at(-1)?.ok, false);
         assert.match(results.at(-1)!.message, /先在 Discord 加入/);
+    });
+
+    it("搬的途中又走進別的語音房：不排一長串請求，搬完直接去最後那間", async () => {
+        const { server, client, results } = await standOutside(0);
+        const calls: string[] = [];
+        const moveToVoice = fakePlatform.platform.moveToVoice;
+        fakePlatform.platform.moveToVoice = async (_g, _u, channelId) => {
+            calls.push(channelId);
+            await new Promise((r) => setTimeout(r, 50));
+            return "moved";
+        };
+        try {
+            const [a, b, c] = [server.layout.rooms[0], server.layout.rooms[2], server.layout.rooms[4]];
+            const serverClient = server.clients.find((x) => x.sessionId === client.sessionId)!;
+            const moving = (server as any).moveIntoVoice(serverClient, a);
+            (server as any).moveIntoVoice(serverClient, b);
+            (server as any).moveIntoVoice(serverClient, c);
+            await moving;
+            await new Promise((r) => setTimeout(r, 20));
+
+            assert.deepStrictEqual(calls, [a.id, c.id]);
+            assert.deepStrictEqual(results.map((r) => r.message), [`已切到語音頻道「${c.name}」`]);
+        } finally {
+            fakePlatform.platform.moveToVoice = moveToVoice;
+        }
+    });
+
+    it("頻道重新排序後原本就站在語音房裡的人，不會因為下一步被搬", async () => {
+        fakePlatform.setVoice(GUILD_A, [{ userId: "me", name: "小明", channelId: "c1", muted: false, deafened: false, streaming: false }]);
+        const { server, client, room } = await standOutside(1); // c1 文字房；先站進去
+        const character = server.state.characters.get(client.sessionId);
+        character.position.y = room.rect.y + 8;
+        // 把 c1 改成語音頻道：同一個位置變成語音房
+        fakePlatform.setChannels(GUILD_A, DEFAULT_TEST_CHANNELS.map((c) => (c.id === "c1" ? { ...c, kind: "voice" as const } : c)));
+        await server.refreshLayout(GUILD_A);
+
+        client.send("move", { x: character.position.x, y: character.position.y + 4, dir: "down" });
+        await server.waitForMessage("move");
+        await new Promise((r) => setTimeout(r, 20));
+
+        assert.deepStrictEqual(fakePlatform.moves, []);
+        fakePlatform.setChannels(GUILD_A, DEFAULT_TEST_CHANNELS);
     });
 
     it("bot 權限不夠時，成員看得到原因", async () => {
