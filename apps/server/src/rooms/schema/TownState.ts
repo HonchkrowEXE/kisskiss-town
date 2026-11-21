@@ -32,11 +32,13 @@ export const VoiceFigure = schema({
 }, "VoiceFigure");
 export type VoiceFigure = SchemaType<typeof VoiceFigure>;
 
-/** 一張遊戲桌的狀態。桌子和座位的位置在地圖資料（TownMapState.tables）裡。 */
+/** 一張遊戲桌：放在哪、玩什麼、誰坐著，以及大家都看得到的遊戲畫面。藏起來的東西（自己的骰子）另外私下送。 */
 export const GameTable = schema({
+    game: t.string(), // GameKind：dice、blackjack、liar
+    x: t.number(), // 桌子中心（像素），座位位置由 seatsAround 算
+    y: t.number(),
     seats: t.array("string"), // 每個座位坐的人（sessionId），空位是空字串
-    bettors: t.array("string"), // 這一局已經下注的人（sessionId），照下注順序
-    result: t.string(), // 上一局結果的 JSON：[{ name, dice, delta }]，還沒玩過是空字串
+    view: t.string(), // 公開的遊戲畫面 JSON，內容由那種遊戲決定（TableGame.publicView）
 }, "GameTable");
 export type GameTable = SchemaType<typeof GameTable>;
 

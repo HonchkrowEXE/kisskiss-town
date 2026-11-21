@@ -21,10 +21,7 @@ export type ChannelRoom = TownChannel & {
     rect: { x: number; y: number; width: number; height: number };
 };
 
-/** 遊戲桌：桌子中心和每個座位（成員入座時站的位置），像素。 */
-export type TableSpot = { id: string; x: number; y: number; seats: { x: number; y: number }[] };
-
-export type TownLayout = { map: TiledMap; rooms: ChannelRoom[]; spawn: { x: number; y: number }; tables: TableSpot[] };
+export type TownLayout = { map: TiledMap; rooms: ChannelRoom[]; spawn: { x: number; y: number } };
 
 /** 傳給前端的地圖：版面加上要提示成員的話（例如還讀不到頻道），沒有就是 null。 */
 export type TownMapState = TownLayout & { notice: string | null };
@@ -39,9 +36,6 @@ const PER_ROW = 4;
 const PLAZA = 4; // 廣場高度
 const CORRIDOR = 3; // 兩排房間之間的走廊高度
 const WALKWAY = 2; // 左右走道寬度
-
-/** 座位相對桌子中心的位置：上下各一、左右各二，共 6 個。 */
-const SEAT_OFFSETS = [[-20, -12], [0, -20], [20, -12], [20, 12], [0, 20], [-20, 12]];
 
 export function layoutTown(channels: TownChannel[]): TownLayout {
     const rows = Math.ceil(channels.length / PER_ROW);
@@ -103,14 +97,7 @@ export function layoutTown(channels: TownChannel[]): TownLayout {
         y: (1 + Math.floor(PLAZA / 2)) * TILE_SIZE + TILE_SIZE / 2,
     };
 
-    // ponytail: 遊戲桌先固定放在廣場左右兩側；之後管理員的編輯模式（#14）或匯入地圖（#5）再讓人自己擺
-    const tableY = (1 + PLAZA / 2) * TILE_SIZE;
-    const tables = [6, width - 6].map((tileX, i) => {
-        const x = tileX * TILE_SIZE;
-        return { id: `table-${i + 1}`, x, y: tableY, seats: SEAT_OFFSETS.map(([dx, dy]) => ({ x: x + dx, y: tableY + dy })) };
-    });
-
-    return { map, rooms, spawn, tables };
+    return { map, rooms, spawn };
 }
 
 /** 腳底在 (x, y) 時站在哪個房間裡；在廣場或走廊就是 undefined。 */

@@ -6,7 +6,7 @@ import { DEPTH } from "./look.js";
 /** 房間名稱最多顯示幾個字，太長的截斷。 */
 const ROOM_NAME_MAX = 10;
 
-/** 小鎮的地圖：圖塊、房間名稱、遊戲桌，以及沒有 bot 之類的提示。頻道變動時整份重畫。 */
+/** 小鎮的地圖：圖塊、房間名稱，以及沒有 bot 之類的提示。頻道變動時整份重畫。遊戲桌在 TableLayer。 */
 export class MapView {
     /** 目前地圖的碰撞判斷（跟伺服器用同一份地圖資料算）；還沒收到地圖時是 undefined。 */
     walkable?: Walkable;
@@ -52,13 +52,6 @@ export class MapView {
                 .setDepth(DEPTH.roomName);
             this.objects.push(label);
             this.roomLabels.set(room.id, { label, text });
-        }
-
-        // 遊戲桌：畫一張桌子；座位就是成員入座時站的位置
-        for (const table of state.tables) {
-            const top = this.scene.add.rectangle(table.x, table.y, 24, 14, 0x6d4c2f).setStrokeStyle(1, 0x3e2a18).setDepth(DEPTH.roomName);
-            const dice = this.scene.add.text(table.x, table.y, "🎲", { fontSize: "8px", resolution: 3 }).setOrigin(0.5).setDepth(DEPTH.roomName);
-            this.objects.push(top, dice);
         }
 
         this.notice.textContent = state.notice ?? "";

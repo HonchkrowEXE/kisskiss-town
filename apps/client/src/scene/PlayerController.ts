@@ -9,10 +9,10 @@ const SEND_INTERVAL = 50;
 /** 一幀最多走多久（毫秒）：分頁切回前景時 delta 會很大，一步跨太遠可能穿牆。 */
 const MAX_STEP_MS = 50;
 
-/** 正在打字（焦點在文字輸入框）時，鍵盤不能拿來走路或按快捷鍵。 */
+/** 正在打字（焦點在文字或數字輸入框）時，鍵盤不能拿來走路或按快捷鍵。 */
 export const isTyping = () => {
     const el = document.activeElement;
-    return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === "text");
+    return el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && ["text", "number"].includes(el.type));
 };
 
 type Position = { x: number; y: number; dir: Direction };
