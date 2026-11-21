@@ -33,10 +33,11 @@ export function placeVoiceFigures<T extends VoiceSeat>(rooms: ChannelRoom[], mem
         list.forEach((member, i) => {
             const slot = i % capacity;
             const round = Math.floor(i / capacity);
+            // 房間太小時夾在房間範圍裡，不會站到牆外
             placed.push({
                 ...member,
-                x: rect.x + SLOT / 2 + (slot % cols) * SLOT + round * 4,
-                y: rect.y + TOP_GAP + Math.floor(slot / cols) * SLOT + round * 4,
+                x: Math.min(rect.x + rect.width - SLOT / 2, rect.x + SLOT / 2 + (slot % cols) * SLOT + round * 4),
+                y: Math.min(rect.y + rect.height - SLOT / 2, rect.y + TOP_GAP + Math.floor(slot / cols) * SLOT + round * 4),
             });
         });
     }
