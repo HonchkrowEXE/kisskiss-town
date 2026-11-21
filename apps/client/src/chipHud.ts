@@ -6,7 +6,7 @@ export function mountChipHud(room: Room<any, TownState>) {
     const hud = document.createElement("div");
     hud.className = "chip-hud";
     hud.innerHTML = `
-        <span class="chip-balance" aria-label="籌碼餘額">🪙 0</span>
+        <span class="chip-balance" role="status">籌碼 0</span>
         <button type="button" data-action="checkIn">簽到</button>
         <button type="button" data-action="claimRelief">領救濟金</button>
         <span class="chip-result" role="status"></span>
@@ -32,6 +32,6 @@ export function mountChipHud(room: Room<any, TownState>) {
     const callbacks = Callbacks.get(room);
     callbacks.onAdd("characters", (character, sessionId) => {
         if (sessionId !== room.sessionId) return;
-        callbacks.listen(character, "chips", (chips) => (balance.textContent = `🪙 ${chips}`), true);
+        callbacks.listen(character, "chips", (chips) => (balance.textContent = `籌碼 ${chips}`), true);
     });
 }

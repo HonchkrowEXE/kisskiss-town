@@ -240,4 +240,15 @@ describe("籌碼", () => {
         assert.deepStrictEqual(await send("claimRelief"), { ok: false, message: "籌碼歸零才能領救濟金" });
         assert.strictEqual(chips(), 1000);
     });
+
+    it("同一位成員開兩個分頁，簽到後兩邊的餘額都更新", async () => {
+        const first = await enter();
+        colyseus.sdk.auth.token = await JWT.sign(first.user);
+        const second = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        await first.server.waitForNextPatch();
+
+        await first.send("checkIn");
+
+        assert.strictEqual(second.state.characters.get(second.sessionId).chips, 1200);
+    });
 });
