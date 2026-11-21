@@ -40,6 +40,12 @@ export class WardrobePanel {
     private result = document.createElement("p");
 
     private http: Client["http"];
+    private title = document.createElement("h2");
+    private cancel = document.createElement("button");
+    /** 第一次進小鎮時擋在地圖前面的半透明底。 */
+    private backdrop = Object.assign(document.createElement("div"), { className: "wardrobe-backdrop", hidden: true });
+    /** 現在是不是第一次進小鎮的歡迎版。 */
+    private welcome = false;
 
     /** http：送照片用（在 Discord 裡會自動走 URL Mapping 代理，並帶上登入的 token）。 */
     constructor(room: Room<any, TownState>, bar: HTMLElement, http: Client["http"]) {
@@ -51,22 +57,36 @@ export class WardrobePanel {
         room.onMessage("wardrobeResult", ({ ok, message }: { ok: boolean; message: string }) => {
             this.result.textContent = message;
             this.result.classList.toggle("error", !ok);
-            if (ok) this.panel.hidden = true;
+            if (ok) this.close();
         });
-        // 自己的外觀被別的分頁改了，換裝畫面開著時跟著更新
         const callbacks = Callbacks.get(room);
         callbacks.onAdd("characters", (character, sessionId) => {
-            if (sessionId === room.sessionId) callbacks.listen(character, "look", () => !this.panel.hidden && this.open());
+            if (sessionId !== room.sessionId) return;
+            // 第一次進小鎮（還沒存過外觀，look 是空字串）：先捏角色
+            if (!character.look) this.open(true);
+            // 自己的外觀被別的分頁改了，換裝畫面開著時跟著更新
+            callbacks.listen(character, "look", () => !this.panel.hidden && this.open(this.welcome));
         });
     }
 
-    /** 打開換裝畫面，從自己現在的外觀開始。 */
-    private open() {
+    /** 打開換裝畫面，從自己現在的外觀開始。welcome：第一次進小鎮的歡迎版（擋住地圖、可以直接用預設）。 */
+    private open(welcome = false) {
+        this.welcome = welcome;
         const look = appearanceFromJson(this.room.state.characters.get(this.room.sessionId)?.look ?? "");
         for (const [field, select] of this.selects) select.value = look[field];
         this.result.textContent = "";
+        this.title.textContent = welcome ? "歡迎來到親親小鎮！先捏一個角色" : "換裝";
+        this.cancel.textContent = welcome ? "直接用預設外觀" : "取消";
+        this.backdrop.hidden = !welcome;
+        this.panel.classList.toggle("welcome", welcome);
         this.panel.hidden = false;
         this.drawPreview();
+    }
+
+    private close() {
+        this.panel.hidden = true;
+        this.backdrop.hidden = true;
+        this.welcome = false;
     }
 
     private current(): Appearance {
@@ -102,13 +122,17 @@ export class WardrobePanel {
         }
         const actions = document.createElement("div");
         actions.className = "table-actions";
-        actions.append(
-            this.button("存檔", () => this.room.send("setLook", this.current())),
-            this.button("取消", () => (this.panel.hidden = true)),
-        );
+        // 取消：平常是關掉；第一次進小鎮時是「直接用預設外觀」（也要存檔，之後才不會再跳）
+        Object.assign(this.cancel, { type: "button", textContent: "取消" });
+        this.cancel.addEventListener("click", () => {
+            if (!this.welcome) return this.close();
+            this.room.send("setLook", appearanceFromJson(""));
+        });
+        actions.append(this.button("存檔", () => this.room.send("setLook", this.current())), this.cancel);
         this.result.className = "chip-result";
-        this.panel.append(Object.assign(document.createElement("h2"), { textContent: "換裝" }), this.preview, form, this.buildPhoto(), actions, this.result);
-        document.body.append(this.panel);
+        this.title.textContent = "換裝";
+        this.panel.append(this.title, this.preview, form, this.buildPhoto(), actions, this.result);
+        document.body.append(this.backdrop, this.panel);
     }
 
     /** 用照片生成：選照片前先告知會送到 Anthropic；結果填進上面的選單，成員可以再改再存檔。 */

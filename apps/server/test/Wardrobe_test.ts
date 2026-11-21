@@ -50,9 +50,16 @@ describe("換裝", () => {
         return { client, server, user, look, setLook };
     }
 
-    it("沒設定過的成員用預設外觀", async () => {
+    it("第一次進小鎮的人外觀是空的（前端用預設畫、打開捏角色畫面）；存檔後再進來就有外觀", async () => {
         const a = await enter();
-        assert.deepStrictEqual(a.look(), DEFAULT_APPEARANCE);
+        const rawLook = () => a.server.state.characters.get(a.client.sessionId)!.look;
+        assert.strictEqual(rawLook(), "");
+        assert.deepStrictEqual(appearanceFromJson(rawLook()), DEFAULT_APPEARANCE);
+
+        await a.setLook(DEFAULT_APPEARANCE); // 直接用預設也算捏過
+        await a.client.leave();
+        const again = await enter(a.user);
+        assert.deepStrictEqual(again.look(), DEFAULT_APPEARANCE);
     });
 
     it("存檔後自己每個分頁和其他人都看到新外觀；重進小鎮還在", async () => {
@@ -71,6 +78,6 @@ describe("換裝", () => {
     it("不能選的部件被拒，外觀不變", async () => {
         const a = await enter();
         assert.deepStrictEqual(await a.setLook({ ...LOOK, hair: "mohawk" }), { ok: false, message: "有部件不能選，請重新選一次" });
-        assert.deepStrictEqual(a.look(), DEFAULT_APPEARANCE);
+        assert.strictEqual(a.server.state.characters.get(a.client.sessionId)!.look, "");
     });
 });
