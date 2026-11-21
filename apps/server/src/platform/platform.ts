@@ -17,6 +17,8 @@ export type Platform = {
      * bot 權限不夠時丟 MoveRefused；暫時連不上時丟 PlatformUnavailable。
      */
     moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
+    /** 在伺服器的通知頻道發一則純文字訊息（不 @ 任何人）；沒有能發的頻道就不發。暫時連不上時丟 PlatformUnavailable。 */
+    announce(guildId: string, text: string): Promise<void>;
 };
 
 /** 平台拒絕搬人，例如 bot 缺少「移動成員」或「連接」權限。訊息可以直接顯示給成員看。 */

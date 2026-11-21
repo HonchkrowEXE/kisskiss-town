@@ -5,14 +5,19 @@ import { layoutTown, roomAt, type ChannelRoom, type TownChannel, type TownLayout
 import { platform, MoveRefused, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
-import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure } from "./schema/TownState.js";
+import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure, type Direction } from "./schema/TownState.js";
 import { placeVoiceFigures } from "../town/placeVoiceFigures.js";
+import { findSlapTarget, knockback } from "../town/slap.js";
+import { MemberSettings } from "../members/MemberSettings.js";
 
 /**
  * 一次最多能累積多遠的移動額度（像素）。額度每秒回復 SPEED，用來吸收網路延遲造成的訊息擠在一起，
  * 又不讓人連發訊息瞬移。
  */
 const MAX_MOVE_BUDGET = 32;
+
+/** 搧巴掌的冷卻時間（毫秒），每位成員各算各的。 */
+const SLAP_COOLDOWN_MS = 10_000;
 
 /** jsonwebtoken 對「token 本身有問題」丟的錯誤；secret 沒設也是 JsonWebTokenError，要另外排除。 */
 const isBadToken = (e: unknown) =>
@@ -33,6 +38,7 @@ export class TownRoom extends Room<{
   layout: TownLayout = layoutTown([]);
   walkable = createWalkable(this.layout.map);
   ledger = new ChipLedger(database());
+  settings = new MemberSettings(database());
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
@@ -40,6 +46,8 @@ export class TownRoom extends Room<{
   private currentRoom = new Map<string, string | undefined>();
   /** 正在幫誰搬頻道、最後想去哪個語音房，key 是帳號 ID。 */
   private movingTo = new Map<string, ChannelRoom>();
+  /** 每位成員上次搧中別人的時間，key 是帳號 ID。 */
+  private lastSlapAt = new Map<string, number>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -62,6 +70,12 @@ export class TownRoom extends Room<{
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
     this.onMessage("checkIn", (client) => this.changeChips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
+    this.onMessage("slap", (client) => this.slap(client));
+    this.onMessage("setSlappable", (client, value: unknown) => {
+      if (typeof value !== "boolean") return;
+      this.settings.setSlappable(chipOwnerOf(client), value);
+      this.forEachCharacterOf(client.auth.id, (character) => (character.slappable = value));
+    });
 
     // 先訂閱再讀，讀的這段時間裡發生的變動才不會漏掉
     const refresh = () => this.refreshLayout(options.guildId).catch((e) => console.error("更新小鎮地圖失敗", e));
@@ -210,6 +224,48 @@ export class TownRoom extends Room<{
     }
   }
 
+  /** 搧旁邊的人：命中與打退的位置都由伺服器決定，結果告訴搧的人，動畫廣播給所有人，再到 Discord 發通知。 */
+  private slap(client: Client) {
+    const me = this.state.characters.get(client.sessionId);
+    if (!me) return;
+    const say = (ok: boolean, message: string) => client.send("slapResult", { ok, message });
+
+    const now = this.clock.currentTime;
+    const last = this.lastSlapAt.get(client.auth.id);
+    if (last !== undefined && now - last < SLAP_COOLDOWN_MS) {
+      return say(false, `冷卻中，還要 ${Math.ceil((SLAP_COOLDOWN_MS - (now - last)) / 1000)} 秒`);
+    }
+    const found = findSlapTarget(me, this.state.characters.entries());
+    if (!found) return say(false, "旁邊沒有人可以搧");
+    const [targetId, target] = found;
+    if (!target.slappable) return say(false, `${target.name} 關掉了「可被搧」`);
+
+    this.lastSlapAt.set(client.auth.id, now);
+    const to = knockback(me.position, target.position, me.dir as Direction, this.walkable);
+    target.position.x = to.x;
+    target.position.y = to.y;
+    // 被打退不算自己走進房間，不要因此被搬頻道
+    this.currentRoom.set(targetId, roomAt(this.layout.rooms, to.x, to.y)?.id);
+    // 對方前端在途中的移動是從舊位置算的；額度歸零讓它們被拒、拉回新位置
+    const meter = this.moveMeters.get(targetId);
+    if (meter) meter.budget = 0;
+    this.clients.find((c) => c.sessionId === targetId)?.send("slapped", { x: to.x, y: to.y, dir: target.dir });
+
+    this.broadcast("slap", { from: client.sessionId, to: targetId });
+    say(true, `啪！你搧了 ${target.name}`);
+    platform()
+      .announce(client.auth.guildId, `👋 ${me.name} 在親親小鎮搧了 ${target.name} 一巴掌！`)
+      .catch((e) => console.warn("搧巴掌通知發不出去：", e instanceof Error ? e.message : e));
+  }
+
+  /** 同一位成員可能開了好幾個分頁，每個分頁的角色都要一起改。 */
+  private forEachCharacterOf(userId: string, change: (character: Character) => void) {
+    for (const other of this.clients) {
+      const character = this.state.characters.get(other.sessionId);
+      if (character && other.auth.id === userId) change(character);
+    }
+  }
+
   /**
    * 經籌碼帳本改餘額，結果（成功或被拒的原因）傳回給那位成員。
    * 同一位成員可能開了好幾個分頁，每個分頁的角色都要更新成新餘額。
@@ -217,10 +273,7 @@ export class TownRoom extends Room<{
   private changeChips(client: Client, action: (owner: ChipOwner) => number, okMessage: string) {
     try {
       const balance = action(chipOwnerOf(client));
-      for (const other of this.clients) {
-        const character = this.state.characters.get(other.sessionId);
-        if (character && other.auth.id === client.auth.id) character.chips = balance;
-      }
+      this.forEachCharacterOf(client.auth.id, (character) => (character.chips = balance));
       client.send("chipResult", { ok: true, message: okMessage });
     } catch (e) {
       if (!(e instanceof ChipError)) throw e;
@@ -235,6 +288,7 @@ export class TownRoom extends Room<{
       name: client.auth.name,
       position: new Vec2(this.spawnPoint()),
       chips: this.ledger.welcome(chipOwnerOf(client)),
+      slappable: this.settings.slappable(chipOwnerOf(client)),
     }));
     this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
   }

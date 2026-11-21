@@ -15,6 +15,7 @@ export const Character = schema({
     position: Vec2, // 腳底的位置，像素
     dir: t.string().default("down"), // 面向，DIRECTIONS 其中一個
     chips: t.number(), // 籌碼餘額，只有伺服器經過籌碼帳本才能改
+    slappable: t.boolean().default(true), // 可被搧；成員自己在設定裡開關
 }, "Character");
 export type Character = SchemaType<typeof Character>;
 
