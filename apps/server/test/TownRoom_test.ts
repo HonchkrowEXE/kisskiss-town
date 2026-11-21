@@ -706,7 +706,7 @@ describe("遊戲桌與骰子比大小", () => {
             const spot = server.layout.tables[0];
             Object.assign(character.position, { x: spot.x, y: spot.y - 28 });
         }
-        return { client, server, user, character, send, walkToTable, table: () => server.state.tables.get(server.layout.tables[0].id) };
+        return { client, server, user, character, send, walkToTable, results, table: () => server.state.tables.get(server.layout.tables[0].id) };
     }
 
     async function seated(name: string) {
@@ -777,6 +777,8 @@ describe("遊戲桌與骰子比大小", () => {
 
         assert.deepStrictEqual(await a.send("roll"), { ok: false, message: "至少要兩個人下注才能擲骰" });
         assert.deepStrictEqual([...a.table().bettors], [a.client.sessionId]);
+        await new Promise((r) => setTimeout(r, 20));
+        assert.deepStrictEqual(b.results.at(-1), { ok: false, message: "籌碼不夠 50，退出這一局" });
         assert.strictEqual(a.server.ledger.balance({ guildId: GUILD_A, userId: a.user.id }), 1000);
     });
 

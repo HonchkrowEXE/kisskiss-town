@@ -347,6 +347,10 @@ export class TownRoom extends Room<{
     const ownerOf = (sessionId: string) => chipOwnerOf(this.clients.find((c) => c.sessionId === sessionId)!);
     // 下注之後籌碼可能在別處用掉了：擲骰前再確認一次，不夠的人退出這一局
     const ready = { players: round.players.filter((p) => this.ledger.balance(ownerOf(p)) >= DICE_STAKE) };
+    for (const p of round.players.filter((p) => !ready.players.includes(p))) {
+      this.clients.find((c) => c.sessionId === p)?.send("tableResult", { ok: false, message: `籌碼不夠 ${DICE_STAKE}，退出這一局` });
+    }
+    if (!ready.players.includes(client.sessionId)) return this.setRound(tableId, ready);
     let result;
     try {
       result = settleRound(ready, Object.fromEntries(ready.players.map((p) => [p, [randomInt(1, 7), randomInt(1, 7)]])));
@@ -356,13 +360,13 @@ export class TownRoom extends Room<{
       return say(false, e.message);
     }
 
-    for (const [sessionId, delta] of Object.entries(result.deltas)) {
-      const owner = ownerOf(sessionId);
-      // 帳上分兩筆：每人先記押的籌碼，贏的人再記拿回的
-      this.ledger.change(owner, -DICE_STAKE, "bet");
-      const balance = delta + DICE_STAKE > 0 ? this.ledger.change(owner, delta + DICE_STAKE, "payout") : this.ledger.balance(owner);
-      this.forEachCharacterOf(owner.userId, (character) => (character.chips = balance));
-    }
+    const entries = Object.entries(result.deltas).map(([sessionId, delta]) => ({
+      owner: ownerOf(sessionId),
+      bet: DICE_STAKE,
+      payout: delta + DICE_STAKE,
+    }));
+    const balances = this.ledger.settle(entries);
+    entries.forEach(({ owner }, i) => this.forEachCharacterOf(owner.userId, (character) => (character.chips = balances[i])));
     this.state.tables.get(tableId)!.result = JSON.stringify(
       Object.entries(result.rolls).map(([sessionId, dice]) => ({
         name: this.state.characters.get(sessionId)?.name ?? "",
