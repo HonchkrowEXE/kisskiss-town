@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { Direction, TownState } from "../../../server/src/rooms/schema/TownState.js";
 import { OBJECT_KINDS } from "../../../server/src/town/objects.js";
+import { BubbleLayer } from "./BubbleLayer.js";
 import { CharacterLayer } from "./CharacterLayer.js";
 import { MapView } from "./MapView.js";
 import { ObjectLayer } from "./ObjectLayer.js";
@@ -25,6 +26,7 @@ export class TownScene extends Phaser.Scene {
     private objects!: ObjectLayer;
     private characters!: CharacterLayer;
     private player!: PlayerController;
+    private bubbles!: BubbleLayer;
     /** 編輯器開著時跟著滑鼠的虛線框，表示家具會放在哪。 */
     private cursor?: Phaser.GameObjects.Rectangle;
 
@@ -62,6 +64,8 @@ export class TownScene extends Phaser.Scene {
             this.cameras.main.startFollow(sprite, true);
         });
 
+        this.bubbles = new BubbleLayer(this, this.room, (userId) => this.characters.positionOf(userId));
+
         // 地圖由伺服器依頻道清單產生，頻道變動時整份換掉
         Callbacks.get(this.room).listen("map", (json) => json && this.map.show(JSON.parse(json)), true);
 
@@ -93,6 +97,7 @@ export class TownScene extends Phaser.Scene {
         this.player.update(time, delta, this.map.walkable);
         const streamingRooms = this.characters.update(delta, this.player.me);
         this.map.markStreaming(streamingRooms);
+        this.bubbles.update(time);
         this.updateCursor();
     }
 

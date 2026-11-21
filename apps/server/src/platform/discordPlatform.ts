@@ -79,6 +79,7 @@ function toTownMessage(m: Message): TownMessage {
     return {
         id: m.id,
         author: m.member?.displayName ?? m.author.displayName,
+        authorId: m.author.id,
         content: describeMessage({ content: m.content, attachments: m.attachments.size, embeds: m.embeds.length }),
         at: m.createdTimestamp,
     };

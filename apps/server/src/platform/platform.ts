@@ -38,7 +38,7 @@ export type Platform = {
 };
 
 /** 文字頻道裡的一則訊息。 */
-export type TownMessage = { id: string; author: string; content: string; at: number };
+export type TownMessage = { id: string; author: string; authorId: string; content: string; at: number };
 
 /** 讀不到或發不出文字頻道的訊息（例如 bot 權限不夠、沒打開 Message Content）。訊息可以直接顯示給成員看。 */
 export class TextRefused extends Error {}
