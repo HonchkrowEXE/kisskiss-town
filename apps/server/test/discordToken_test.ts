@@ -17,12 +17,16 @@ describe("/discord_token 路由", () => {
         else process.env.ALLOW_MOCK_LOGIN = original;
     });
 
-    const post = (body: object) => colyseus.http.post("/discord_token", { body });
+    const post = (body: object, headers: Record<string, string> = {}) =>
+        colyseus.http.post("/discord_token", { body, headers });
+
+    /** 經 cloudflared 通道進來的請求，Cloudflare 會加上 cf-ray 標頭。 */
+    const TUNNELED = { "cf-ray": "8f00000000000000-TPE" };
 
     it("沒打開 ALLOW_MOCK_LOGIN 時，假登入被拒", async () => {
         process.env.ALLOW_MOCK_LOGIN = "false";
 
-        await assert.rejects(post({ code: "mock_code", guildId: GUILD_ID }), (e: any) => e.statusCode === 400);
+        await assert.rejects(post({ code: "mock_code", guildId: GUILD_ID }), (e: any) => e.statusCode === 403);
     });
 
     it("打開 ALLOW_MOCK_LOGIN 時，假登入拿到的 token 能進小鎮", async () => {
@@ -40,5 +44,43 @@ describe("/discord_token 路由", () => {
         process.env.ALLOW_MOCK_LOGIN = "true";
 
         await assert.rejects(post({ code: "mock_code" }), (e: any) => e.statusCode === 400);
+    });
+
+    it("經通道進來的假登入一律被拒，就算打開了 ALLOW_MOCK_LOGIN", async () => {
+        process.env.ALLOW_MOCK_LOGIN = "true";
+
+        await assert.rejects(post({ code: "mock_code", guildId: GUILD_ID }, TUNNELED), (e: any) => e.statusCode === 403);
+    });
+
+    it("發出的小鎮 token 有到期時間", async () => {
+        process.env.ALLOW_MOCK_LOGIN = "true";
+
+        const { data } = await post({ code: "mock_code", guildId: GUILD_ID });
+        const payload = JSON.parse(Buffer.from(data.token.split(".")[1], "base64url").toString());
+
+        assert.ok(payload.exp > payload.iat, JSON.stringify(payload));
+    });
+
+    it("伺服器沒設定 Client ID／Secret 時回 500，並說明原因", async () => {
+        const saved = process.env.DISCORD_CLIENT_SECRET;
+        delete process.env.DISCORD_CLIENT_SECRET;
+        try {
+            await assert.rejects(post({ code: "real-code", guildId: GUILD_ID }), (e: any) =>
+                e.statusCode === 500 && /DISCORD_CLIENT_SECRET/.test(e.data?.error));
+        } finally {
+            if (saved !== undefined) process.env.DISCORD_CLIENT_SECRET = saved;
+        }
+    });
+});
+
+describe("開發工具", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+    before(async () => (colyseus = await testServer()));
+
+    it("monitor 只開給本機，經通道進來的看不到", async () => {
+        const local = await colyseus.http.get("/colyseus/api");
+        assert.ok(Array.isArray(local.data.rooms));
+
+        await assert.rejects(colyseus.http.get("/colyseus/api", { headers: { "cf-ray": "x" } }), (e: any) => e.statusCode === 403);
     });
 });

@@ -28,7 +28,10 @@ export class TownRoom extends Room<{
   private moveMeters = new Map<string, { budget: number; at: number }>();
 
   static async onAuth(token: string, options: { guildId?: string }) {
-    const user = await JWT.verify<TownUser>(token);
+    // 驗證失敗時 Colyseus 預設回 523，經 Cloudflare 會被換成它自己的錯誤頁、訊息消失，所以改回 401
+    const user = await JWT.verify<TownUser>(token).catch(() => {
+      throw new ServerError(401, "登入已失效，請重新打開親親小鎮");
+    });
     // guildId 是前端傳來的，不可信；要跟登入時向 DC 驗證過、簽進 JWT 的一致
     if (options.guildId !== user.guildId) {
       throw new ServerError(403, "不能進其他伺服器的小鎮");

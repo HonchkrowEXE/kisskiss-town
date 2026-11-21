@@ -14,6 +14,16 @@ try {
     // 開發時從 devtools（或自動化測試）看得到房間狀態
     if (import.meta.env.DEV) (window as any).room = room;
 
+    // 斷線時在畫面上方提示；SDK 會自己試著重連，重連失敗才會 onLeave
+    const notice = document.createElement("div");
+    notice.className = "notice";
+    document.body.append(notice);
+    const show = (text: string) => ((notice.textContent = text), (notice.hidden = !text));
+    show("");
+    room.onDrop(() => show("連線中斷，重新連線中…"));
+    room.onReconnect(() => show(""));
+    room.onLeave(() => show("和小鎮的連線中斷了，請關掉親親小鎮再打開"));
+
     new Phaser.Game({
         parent: app,
         width: 960, // 地圖 320×240（20×15 格，每格 16px）放大 3 倍，文字才清楚

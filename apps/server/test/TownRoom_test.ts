@@ -43,6 +43,13 @@ describe("小鎮房間", () => {
         await assert.rejects(join(xiaoming, GUILD_B));
     });
 
+    it("token 過期或亂填時被拒，狀態碼是 401（不是會被 Cloudflare 換掉的 523）", async () => {
+        for (const token of [await JWT.sign(xiaoming, { expiresIn: -10 }), "not-a-jwt"]) {
+            colyseus.sdk.auth.token = token;
+            await assert.rejects(colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A }), (e: any) => e.code === 401);
+        }
+    });
+
     it("小鎮裡顯示登入時取得的名字", async () => {
         const a = await join(xiaoming);
         await colyseus.getRoomById(a.roomId).waitForNextPatch();

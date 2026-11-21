@@ -111,6 +111,8 @@ npm run cloudflared
 
 只要一條 URL Mapping 就夠：伺服器的請求走 `/colyseus`，由 Vite 轉給本機的 2567。
 
+經通道（Cloudflare）進來的請求不能用假登入，也看不到 Colyseus 的 playground 和 monitor，這些只給本機直連用。
+
 步驟出處：Discord 官方的 [Building an Activity](https://discord.com/developers/docs/activities/building-an-activity) 和 [Local Development](https://discord.com/developers/docs/activities/development-guides/local-development)。
 
 ## 參與開發

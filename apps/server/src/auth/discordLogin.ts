@@ -35,6 +35,7 @@ export async function loginWithDiscord(code: string, guildId: string, deps: Logi
     if (!tokenRes.ok) throw new LoginError(`DC 拒絕授權碼（${tokenRes.status}）`);
 
     const { access_token: accessToken } = await tokenRes.json();
+    if (!accessToken) throw new LoginError("DC 沒有回傳 access token");
 
     const auth = { headers: { Authorization: `Bearer ${accessToken}` } };
 
