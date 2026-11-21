@@ -85,7 +85,7 @@ export class TextPanel {
 
     /** 在 Discord 被刪掉的訊息，從畫面上拿掉。 */
     private remove(messageId: string) {
-        for (const item of [...this.list.children]) {
+        for (const item of Array.from(this.list.children)) {
             if ((item as HTMLElement).dataset.id === messageId) item.remove();
         }
     }
