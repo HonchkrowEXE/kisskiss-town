@@ -180,10 +180,13 @@ export function createDiscordPlatform(token: string | undefined): Platform {
                 await guild.members.edit(userId, { channel: channelId });
                 return "moved";
             } catch (e) {
-                // 50013：bot 缺權限（移動成員，或目標頻道的連接、檢視頻道）
-                if ((e as { code?: number }).code === 50013) {
+                // 錯誤碼見 https://discord.com/developers/docs/topics/opcodes-and-status-codes
+                const code = (e as { code?: number }).code;
+                if (code === 40032) return "not-in-voice"; // 快取還沒更新，人剛好離開語音
+                if (code === 50013 || code === 50001) {
                     throw new MoveRefused("bot 沒有權限把你搬過去，請管理員給 bot「移動成員」和這個頻道的「連接」權限");
                 }
+                if (code === 10003) throw new MoveRefused("這個語音頻道已經不存在了");
                 throw e;
             }
         },
