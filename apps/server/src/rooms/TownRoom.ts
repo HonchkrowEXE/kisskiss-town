@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED, type TiledMap } from "../town/walkable.js";
-import { ChipLedger, ChipError } from "../chips/ChipLedger.js";
+import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 
@@ -22,6 +22,9 @@ const isBadToken = (e: unknown) =>
   e instanceof Error &&
   ["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(e.name) &&
   !/secret/i.test(e.message);
+
+/** 籌碼帳本用的成員身分：登入時驗證過、簽進 JWT 的伺服器和帳號。 */
+const chipOwnerOf = (client: Client): ChipOwner => ({ guildId: client.auth.guildId, userId: client.auth.id });
 
 export type MoveMessage = { x: number; y: number; dir: string };
 
@@ -50,8 +53,8 @@ export class TownRoom extends Room<{
 
   onCreate (options: any) {
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
-    this.onMessage("checkIn", (client) => this.chips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
-    this.onMessage("claimRelief", (client) => this.chips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
+    this.onMessage("checkIn", (client) => this.changeChips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
+    this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
   }
 
   /** 前端算好的新位置。不合法就不採用，並把伺服器上的位置傳回去讓前端拉回來。 */
@@ -82,12 +85,17 @@ export class TownRoom extends Room<{
     character.dir = dir;
   }
 
-  /** 經籌碼帳本改餘額，結果（成功或被拒的原因）傳回給那位成員。 */
-  private chips(client: Client, action: (owner: { guildId: string; userId: string }) => number, okMessage: string) {
-    const character = this.state.characters.get(client.sessionId);
-    if (!character) return;
+  /**
+   * 經籌碼帳本改餘額，結果（成功或被拒的原因）傳回給那位成員。
+   * 同一位成員可能開了好幾個分頁，每個分頁的角色都要更新成新餘額。
+   */
+  private changeChips(client: Client, action: (owner: ChipOwner) => number, okMessage: string) {
     try {
-      character.chips = action({ guildId: client.auth.guildId, userId: client.auth.id });
+      const balance = action(chipOwnerOf(client));
+      for (const other of this.clients) {
+        const character = this.state.characters.get(other.sessionId);
+        if (character && other.auth.id === client.auth.id) character.chips = balance;
+      }
       client.send("chipResult", { ok: true, message: okMessage });
     } catch (e) {
       if (!(e instanceof ChipError)) throw e;
@@ -100,7 +108,7 @@ export class TownRoom extends Room<{
     this.state.characters.set(client.sessionId, new Character({
       name: client.auth.name,
       position: new Vec2(this.walkable.randomSpawn()),
-      chips: this.ledger.welcome({ guildId: client.auth.guildId, userId: client.auth.id }),
+      chips: this.ledger.welcome(chipOwnerOf(client)),
     }));
     this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
   }

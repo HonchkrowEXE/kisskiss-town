@@ -25,6 +25,15 @@ describe("ChipLedger", () => {
             assert.strictEqual(ledger.history(xiaoming).length, 1);
         });
 
+        it("開帳戶和發放一起成功或一起失敗", () => {
+            const db = new DatabaseSync(":memory:");
+            const broken = new ChipLedger(db);
+            db.exec("DROP TABLE chip_entries"); // 讓記帳那一步失敗
+            assert.throws(() => broken.welcome(xiaoming));
+            db.exec("CREATE TABLE chip_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT, user_id TEXT, reason TEXT, delta INTEGER, balance INTEGER, at TEXT)");
+            assert.strictEqual(broken.welcome(xiaoming), 1000);
+        });
+
         it("每座小鎮的籌碼分開算", () => {
             ledger.welcome(xiaoming);
             ledger.checkIn(xiaoming, taipei("2026-11-21T10:00:00"));
@@ -96,6 +105,12 @@ describe("ChipLedger", () => {
         it("結算贏的籌碼加回去", () => {
             ledger.change(xiaoming, -100, "bet");
             assert.strictEqual(ledger.change(xiaoming, 200, "payout"), 1100);
+        });
+
+        it("下注只能扣、結算只能加", () => {
+            assert.throws(() => ledger.change(xiaoming, 100, "bet"), ChipError);
+            assert.throws(() => ledger.change(xiaoming, -100, "payout"), ChipError);
+            assert.strictEqual(ledger.balance(xiaoming), 1000);
         });
 
         it("金額必須是整數", () => {

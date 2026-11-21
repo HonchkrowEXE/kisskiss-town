@@ -51,10 +51,13 @@ export class ChipLedger {
     /** 第一次進小鎮送 WELCOME_CHIPS，之後再呼叫不會重複發。回傳餘額。 */
     welcome(owner: ChipOwner): number {
         if (this.account(owner)) return this.balance(owner);
-        this.db
-            .prepare("INSERT INTO chip_accounts (guild_id, user_id, balance) VALUES (?, ?, 0)")
-            .run(owner.guildId, owner.userId);
-        return this.record(owner, WELCOME_CHIPS, "welcome");
+        // 開帳戶和發放要一起成功：只開了帳戶卻沒發到，之後就永遠領不到了
+        return this.transaction(() => {
+            this.db
+                .prepare("INSERT INTO chip_accounts (guild_id, user_id, balance) VALUES (?, ?, 0)")
+                .run(owner.guildId, owner.userId);
+            return this.record(owner, WELCOME_CHIPS, "welcome");
+        });
     }
 
     /** 每天簽到一次（以台北時間換日）。回傳餘額。 */
@@ -66,7 +69,7 @@ export class ChipLedger {
             this.db
                 .prepare("UPDATE chip_accounts SET last_checkin = ? WHERE guild_id = ? AND user_id = ?")
                 .run(today, owner.guildId, owner.userId);
-            return this.record(owner, CHECKIN_CHIPS, "checkin");
+            return this.record(owner, CHECKIN_CHIPS, "checkin", now);
         });
     }
 
@@ -86,6 +89,10 @@ export class ChipLedger {
     /** 遊戲下注（負數）或結算（正數）。餘額不夠時拒絕。回傳餘額。 */
     change(owner: ChipOwner, delta: number, reason: "bet" | "payout"): number {
         if (!Number.isInteger(delta)) throw new ChipError("籌碼必須是整數");
+        // 帳上的原因要和方向一致：下注只會扣、結算只會加
+        if ((reason === "bet" && delta > 0) || (reason === "payout" && delta < 0)) {
+            throw new ChipError(`${reason === "bet" ? "下注" : "結算"}的金額方向不對`);
+        }
         const account = this.mustHaveAccount(owner);
         if (account.balance + delta < 0) throw new ChipError("籌碼不夠");
         return this.transaction(() => this.record(owner, delta, reason));
@@ -112,14 +119,14 @@ export class ChipLedger {
     }
 
     /** 改餘額並記一筆帳，兩件事一定一起發生。回傳變動後的餘額。 */
-    private record(owner: ChipOwner, delta: number, reason: ChipReason): number {
+    private record(owner: ChipOwner, delta: number, reason: ChipReason, now = new Date()): number {
         return this.transaction(() => {
             const { balance } = this.db
                 .prepare("UPDATE chip_accounts SET balance = balance + ? WHERE guild_id = ? AND user_id = ? RETURNING balance")
                 .get(delta, owner.guildId, owner.userId) as { balance: number };
             this.db
                 .prepare("INSERT INTO chip_entries (guild_id, user_id, reason, delta, balance, at) VALUES (?, ?, ?, ?, ?, ?)")
-                .run(owner.guildId, owner.userId, reason, delta, balance, new Date().toISOString());
+                .run(owner.guildId, owner.userId, reason, delta, balance, now.toISOString());
             return balance;
         });
     }

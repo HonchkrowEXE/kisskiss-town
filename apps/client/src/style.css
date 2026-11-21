@@ -1,8 +1,7 @@
 html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden; }
 #app { width: 100vw; height: 100vh; }
-.notice { position: fixed; top: 0; left: 0; right: 0; padding: 8px; text-align: center; background: #b3261e; }
+.notice { position: fixed; top: 0; left: 0; right: 0; z-index: 1; padding: 8px; text-align: center; background: #b3261e; }
 .chip-hud { position: fixed; top: 8px; left: 8px; display: flex; gap: 8px; align-items: center; font: 14px sans-serif; }
 .chip-hud button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .chip-hud button:focus-visible { outline: 2px solid #fff; }
 .chip-result.error { color: #ff8a80; }
-.notice { z-index: 1; }
