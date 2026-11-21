@@ -17,6 +17,7 @@ export const Character = schema({
     chips: t.number(), // 籌碼餘額，只有伺服器經過籌碼帳本才能改
     slappable: t.boolean().default(true), // 可被搧；成員自己在設定裡開關
     seatedAt: t.string().default(""), // 坐在哪張遊戲桌（桌子 ID），沒坐是空字串；坐著時不能走動
+    look: t.string().default(""), // 角色外觀的 JSON（town/appearance.ts 的 Appearance）；空字串用預設
 }, "Character");
 export type Character = SchemaType<typeof Character>;
 

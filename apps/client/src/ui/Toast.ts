@@ -8,6 +8,7 @@ const TOAST_MESSAGES = [
     "voiceMove", // 走進語音房後：切過去了、要先加入語音、bot 權限不夠
     "slapResult", // 搧巴掌：命中、冷卻中、對方關掉了
     "tableResult", // 遊戲桌：入座、下注、籌碼不夠
+    "wardrobeResult", // 換裝：換好了、部件不能選
 ];
 
 /** 畫面上方短暫顯示的提示，成功是綠色、失敗是紅色，4 秒後消失。 */

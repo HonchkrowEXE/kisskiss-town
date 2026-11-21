@@ -13,6 +13,7 @@ import { Slapping } from "./features/Slapping.js";
 import { TextRooms } from "./features/TextRooms.js";
 import type { TownFeature } from "./features/TownFeature.js";
 import { VoiceRooms } from "./features/VoiceRooms.js";
+import { Wardrobe } from "./features/Wardrobe.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 import type { RoomChangeCause, Town } from "./Town.js";
 
@@ -79,6 +80,7 @@ export class TownRoom extends Room<{
     this.features = [
       new Chips(this),
       new Slapping(this),
+      new Wardrobe(this),
       new GameTables(this),
       new TextRooms(this),
       this.voiceRooms,

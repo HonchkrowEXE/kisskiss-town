@@ -1,9 +1,6 @@
-// 畫面上共用的樣子：圖層順序、角色圖的格子、名字的位置。
+// 畫面上共用的樣子：圖層順序、名字的位置、動態文字。角色本身的畫法在 characterArt.ts。
 
-import type { Direction, VoiceFigure } from "../../../server/src/rooms/schema/TownState.js";
-
-/** hero.svg 裡四個方向的格子順序。 */
-export const FRAME: Record<Direction, number> = { down: 0, left: 1, right: 2, up: 3 };
+import type { VoiceFigure } from "../../../server/src/rooms/schema/TownState.js";
 
 /** 名字標籤在腳底上方幾個像素。 */
 export const LABEL_OFFSET = 13;

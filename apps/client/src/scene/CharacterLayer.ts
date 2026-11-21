@@ -1,21 +1,32 @@
 import Phaser from "phaser";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { Direction, TownState } from "../../../server/src/rooms/schema/TownState.js";
-import { DEPTH, FRAME, LABEL_OFFSET, dynamicsText } from "./look.js";
+import { DEFAULT_APPEARANCE, appearanceFromJson } from "../../../server/src/town/appearance.js";
+import { STEPS, characterTexture, directionIndex } from "./characterArt.js";
+import { DEPTH, LABEL_OFFSET, dynamicsText } from "./look.js";
 
-type View = { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text };
+/** 走路時每一步多久（毫秒）。 */
+const STEP_MS = 150;
+
+type View = {
+    sprite: Phaser.GameObjects.Sprite;
+    label: Phaser.GameObjects.Text;
+    /** 目前用的外觀 JSON；變了就換一張角色圖。 */
+    look: string;
+    /** 連續走了多久（毫秒）；停下來歸零，用來算現在是哪一步。 */
+    walking: number;
+};
 
 /**
  * 畫面上的人：
- * - 打開小鎮的人：能走動的角色，名字後面加動態
- * - 在語音頻道裡、沒打開小鎮的人：站在語音房裡
+ * - 打開小鎮的人：照自己的外觀畫、走路有動畫，名字後面加動態
+ * - 在語音頻道裡、沒打開小鎮的人：用預設外觀站在語音房裡
  */
 export class CharacterLayer {
     /** 打開小鎮的人，key 是 sessionId。 */
     private characters = new Map<string, View>();
     /** 語音頻道裡、沒打開小鎮的人，key 是帳號 ID。 */
     private figures = new Map<string, View>();
-
     private scene: Phaser.Scene;
     private room: Room<any, TownState>;
 
@@ -25,8 +36,7 @@ export class CharacterLayer {
         this.room = room;
         const callbacks = Callbacks.get(room);
         callbacks.onAdd("characters", (character, sessionId) => {
-            const { x, y } = character.position;
-            const view = this.createView(x, y, character.name, "8px", FRAME[character.dir as Direction] ?? 0);
+            const view = this.createView(character.position.x, character.position.y, character.name, "8px", character.look);
             this.characters.set(sessionId, view);
             if (sessionId === room.sessionId) onMeAdded(view.sprite);
         });
@@ -49,10 +59,19 @@ export class CharacterLayer {
             const t = isMe ? 1 : Math.min(1, delta / 100);
             const x = Phaser.Math.Linear(view.sprite.x, target.x, t);
             const y = Phaser.Math.Linear(view.sprite.y, target.y, t);
-            view.sprite.setPosition(x, y).setFrame(FRAME[(isMe ? me.dir : character.dir) as Direction] ?? 0);
+            const moved = Math.hypot(x - view.sprite.x, y - view.sprite.y) > 0.05;
+            if (character.look !== view.look) this.setLook(view, character.look);
+            view.walking = moved ? view.walking + delta : 0;
+            view.sprite.setPosition(x, y).setFrame(this.frameOf(isMe ? me.dir : character.dir, view.walking));
             view.label.setPosition(x, y - LABEL_OFFSET).setText(character.name + dynamicsText(voice?.get(character.userId)));
         });
         return this.updateVoiceFigures();
+    }
+
+    /** 面向和走了多久 → 角色圖的第幾格。停著是站姿，走路時左右腳輪流。 */
+    private frameOf(dir: string, walking: number) {
+        const step = walking > 0 ? 1 + (Math.floor(walking / STEP_MS) % 2) : 0;
+        return directionIndex(dir) * STEPS + step;
     }
 
     /** 語音頻道裡、沒打開小鎮的人站在語音房裡；有打開小鎮的人已經用能走動的角色顯示，這裡藏起來。 */
@@ -72,7 +91,7 @@ export class CharacterLayer {
                 return;
             }
             if (!view) {
-                view = this.createView(figure.x, figure.y, "", "6px", FRAME.down);
+                view = this.createView(figure.x, figure.y, "", "6px", "");
                 this.figures.set(userId, view);
             }
             view.sprite.setVisible(true).setPosition(figure.x, figure.y);
@@ -100,14 +119,22 @@ export class CharacterLayer {
         this.scene.tweens.add({ targets: pop, y: pop.y - 10, alpha: 0, duration: 600, onComplete: () => pop.destroy() });
     }
 
-    private createView(x: number, y: number, name: string, fontSize: string, frame: number): View {
+    private createView(x: number, y: number, name: string, fontSize: string, look: string): View {
+        const texture = characterTexture(this.scene, look ? appearanceFromJson(look) : DEFAULT_APPEARANCE);
         return {
-            sprite: this.scene.add.sprite(x, y, "hero", frame).setOrigin(0.5, 0.75).setDepth(DEPTH.character),
+            sprite: this.scene.add.sprite(x, y, texture, 0).setOrigin(0.5, 0.75).setDepth(DEPTH.character),
             label: this.scene.add
                 .text(x, y - LABEL_OFFSET, name, { fontSize, color: "#fff", resolution: 3 })
                 .setOrigin(0.5, 1)
                 .setDepth(DEPTH.name),
+            look,
+            walking: 0,
         };
+    }
+
+    private setLook(view: View, look: string) {
+        view.look = look;
+        view.sprite.setTexture(characterTexture(this.scene, appearanceFromJson(look)), 0);
     }
 
     private destroy(view: View | undefined) {
