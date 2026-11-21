@@ -5,10 +5,12 @@ import { layoutTown, roomAt, type ChannelRoom, type TownChannel, type TownLayout
 import { platform, MoveRefused, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
-import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure, type Direction } from "./schema/TownState.js";
+import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure, GameTable, type Direction } from "./schema/TownState.js";
 import { placeVoiceFigures } from "../town/placeVoiceFigures.js";
 import { findSlapTarget, knockback } from "../town/slap.js";
 import { MemberSettings } from "../members/MemberSettings.js";
+import { DICE_STAKE, DiceError, emptyRound, joinRound, leaveRound, settleRound, type DiceRound } from "../games/diceDuel.js";
+import { randomInt } from "node:crypto";
 
 /**
  * 一次最多能累積多遠的移動額度（像素）。額度每秒回復 SPEED，用來吸收網路延遲造成的訊息擠在一起，
@@ -18,6 +20,9 @@ const MAX_MOVE_BUDGET = 32;
 
 /** 搧巴掌的冷卻時間（毫秒），每位成員各算各的。 */
 const SLAP_COOLDOWN_MS = 10_000;
+
+/** 離遊戲桌中心多近才能入座（像素）。 */
+const SIT_RANGE = 40;
 
 /** jsonwebtoken 對「token 本身有問題」丟的錯誤；secret 沒設也是 JsonWebTokenError，要另外排除。 */
 const isBadToken = (e: unknown) =>
@@ -48,6 +53,8 @@ export class TownRoom extends Room<{
   private movingTo = new Map<string, ChannelRoom>();
   /** 每位成員上次搧中別人的時間，key 是帳號 ID。 */
   private lastSlapAt = new Map<string, number>();
+  /** 每張遊戲桌這一局的下注狀況，key 是桌子 ID。 */
+  private rounds = new Map<string, DiceRound>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -71,6 +78,10 @@ export class TownRoom extends Room<{
     this.onMessage("checkIn", (client) => this.changeChips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
     this.onMessage("slap", (client) => this.slap(client));
+    this.onMessage("sit", (client) => this.sit(client));
+    this.onMessage("stand", (client) => this.stand(client.sessionId));
+    this.onMessage("bet", (client) => this.bet(client));
+    this.onMessage("roll", (client) => this.roll(client));
     this.onMessage("setSlappable", (client, value: unknown) => {
       if (typeof value !== "boolean" || this.state.characters.get(client.sessionId)?.slappable === value) return;
       this.settings.setSlappable(chipOwnerOf(client), value);
@@ -131,6 +142,11 @@ export class TownRoom extends Room<{
 
     this.layout = layoutTown(channels);
     this.walkable = createWalkable(this.layout.map);
+    for (const spot of this.layout.tables) {
+      if (!this.state.tables.has(spot.id)) {
+        this.state.tables.set(spot.id, new GameTable({ seats: spot.seats.map(() => ""), bettors: [], result: "" }));
+      }
+    }
     const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);
 
@@ -166,6 +182,11 @@ export class TownRoom extends Room<{
     const now = this.clock.currentTime;
     meter.budget = Math.min(MAX_MOVE_BUDGET, meter.budget + (SPEED * (now - meter.at)) / 1000);
     meter.at = now;
+
+    if (character.seatedAt) {
+      client.send("moveRejected", { x: character.position.x, y: character.position.y, dir: character.dir });
+      return;
+    }
 
     const { x, y, dir } = message ?? ({} as MoveMessage);
     const distance = Math.hypot(x - character.position.x, y - character.position.y);
@@ -241,7 +262,8 @@ export class TownRoom extends Room<{
     if (!target.slappable) return say(false, `${target.name} 關掉了「可被搧」`);
 
     this.lastSlapAt.set(client.auth.id, now);
-    const to = knockback(me.position, target.position, me.dir as Direction, this.walkable);
+    // 坐在遊戲桌的人被搧不會離開座位
+    const to = target.seatedAt ? { ...target.position } : knockback(me.position, target.position, me.dir as Direction, this.walkable);
     target.position.x = to.x;
     target.position.y = to.y;
     // 被打退不算自己走進房間，不要因此被搬頻道
@@ -256,6 +278,110 @@ export class TownRoom extends Room<{
     platform()
       .announce(client.auth.guildId, `👋 ${me.name} 在親親小鎮搧了 ${target.name} 一巴掌！`)
       .catch((e) => console.warn("搧巴掌通知發不出去：", e instanceof Error ? e.message : e));
+  }
+
+  /** 走到遊戲桌旁入座：站到空的座位上，坐著時不能走動。 */
+  private sit(client: Client) {
+    const me = this.state.characters.get(client.sessionId);
+    if (!me) return;
+    const say = (ok: boolean, message: string) => client.send("tableResult", { ok, message });
+    if (me.seatedAt) return say(false, "已經坐在遊戲桌了");
+    const elsewhere = this.clients.some(
+      (c) => c.sessionId !== client.sessionId && c.auth.id === client.auth.id && this.state.characters.get(c.sessionId)?.seatedAt,
+    );
+    if (elsewhere) return say(false, "你已經在另一個分頁入座了");
+
+    const spot = this.layout.tables.find((t) => Math.hypot(t.x - me.position.x, t.y - me.position.y) <= SIT_RANGE);
+    if (!spot) return say(false, "旁邊沒有遊戲桌");
+    const table = this.state.tables.get(spot.id)!;
+    const seat = table.seats.indexOf("");
+    if (seat === -1) return say(false, "這桌坐滿了");
+
+    table.seats[seat] = client.sessionId;
+    me.seatedAt = spot.id;
+    me.position.x = spot.seats[seat].x;
+    me.position.y = spot.seats[seat].y;
+    this.currentRoom.set(client.sessionId, undefined);
+    // 入座前前端送出、還在路上的移動不能把人拉離座位；起身後從座位重新累積額度
+    const meter = this.moveMeters.get(client.sessionId);
+    if (meter) Object.assign(meter, { budget: 0, at: this.clock.currentTime });
+    say(true, `入座了：骰子比大小，每局 ${DICE_STAKE} 籌碼`);
+  }
+
+  /** 起身（按離開或斷線）：讓出座位，這一局還沒擲骰就退出，不扣籌碼。 */
+  private stand(sessionId: string) {
+    const me = this.state.characters.get(sessionId);
+    const tableId = me?.seatedAt;
+    if (!me || !tableId) return;
+    const table = this.state.tables.get(tableId)!;
+    const seat = table.seats.indexOf(sessionId);
+    if (seat !== -1) table.seats[seat] = "";
+    me.seatedAt = "";
+    this.setRound(tableId, leaveRound(this.round(tableId), sessionId));
+    const meter = this.moveMeters.get(sessionId);
+    if (meter) Object.assign(meter, { budget: 0, at: this.clock.currentTime });
+  }
+
+  /** 下注加入這一局；籌碼在擲骰時才扣。 */
+  private bet(client: Client) {
+    const tableId = this.state.characters.get(client.sessionId)?.seatedAt;
+    const say = (ok: boolean, message: string) => client.send("tableResult", { ok, message });
+    if (!tableId) return say(false, "先入座才能下注");
+    try {
+      this.setRound(tableId, joinRound(this.round(tableId), client.sessionId, this.ledger.balance(chipOwnerOf(client))));
+      say(true, `下注 ${DICE_STAKE} 籌碼，等其他人下注後按擲骰`);
+    } catch (e) {
+      if (!(e instanceof DiceError)) throw e;
+      say(false, e.message);
+    }
+  }
+
+  /** 擲骰：伺服器替每位下注的人擲兩顆骰子，結算後立刻記進籌碼帳本。 */
+  private roll(client: Client) {
+    const tableId = this.state.characters.get(client.sessionId)?.seatedAt;
+    const say = (ok: boolean, message: string) => client.send("tableResult", { ok, message });
+    if (!tableId) return say(false, "先入座才能擲骰");
+    const round = this.round(tableId);
+    if (!round.players.includes(client.sessionId)) return say(false, "先下注才能擲骰");
+
+    const ownerOf = (sessionId: string) => chipOwnerOf(this.clients.find((c) => c.sessionId === sessionId)!);
+    // 下注之後籌碼可能在別處用掉了：擲骰前再確認一次，不夠的人退出這一局
+    const ready = { players: round.players.filter((p) => this.ledger.balance(ownerOf(p)) >= DICE_STAKE) };
+    let result;
+    try {
+      result = settleRound(ready, Object.fromEntries(ready.players.map((p) => [p, [randomInt(1, 7), randomInt(1, 7)]])));
+    } catch (e) {
+      if (!(e instanceof DiceError)) throw e;
+      this.setRound(tableId, ready);
+      return say(false, e.message);
+    }
+
+    for (const [sessionId, delta] of Object.entries(result.deltas)) {
+      const owner = ownerOf(sessionId);
+      // 帳上分兩筆：每人先記押的籌碼，贏的人再記拿回的
+      this.ledger.change(owner, -DICE_STAKE, "bet");
+      const balance = delta + DICE_STAKE > 0 ? this.ledger.change(owner, delta + DICE_STAKE, "payout") : this.ledger.balance(owner);
+      this.forEachCharacterOf(owner.userId, (character) => (character.chips = balance));
+    }
+    this.state.tables.get(tableId)!.result = JSON.stringify(
+      Object.entries(result.rolls).map(([sessionId, dice]) => ({
+        name: this.state.characters.get(sessionId)?.name ?? "",
+        dice,
+        delta: result.deltas[sessionId],
+      })),
+    );
+    this.setRound(tableId, emptyRound());
+  }
+
+  private round(tableId: string) {
+    return this.rounds.get(tableId) ?? emptyRound();
+  }
+
+  /** 改這一局的下注狀況，同步給前端顯示誰下注了。 */
+  private setRound(tableId: string, round: DiceRound) {
+    this.rounds.set(tableId, round);
+    const bettors = this.state.tables.get(tableId)!.bettors;
+    bettors.splice(0, bettors.length, ...round.players);
   }
 
   /** 同一位成員可能開了好幾個分頁，每個分頁的角色都要一起改。 */
@@ -295,6 +421,7 @@ export class TownRoom extends Room<{
 
   onLeave (client: Client, code: CloseCode) {
     console.log(client.sessionId, "left!");
+    this.stand(client.sessionId); // 斷線視為起身：還沒擲骰的這一局不算、不扣籌碼
     this.state.characters.delete(client.sessionId);
     this.moveMeters.delete(client.sessionId);
     this.currentRoom.delete(client.sessionId);

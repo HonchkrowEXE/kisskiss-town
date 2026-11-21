@@ -38,7 +38,7 @@ export class TownScene extends Phaser.Scene {
     private figures = new Map<string, CharacterView>();
     /** 房名標籤，key 是頻道 ID；直播時在原本的字後面加標示。 */
     private roomLabels = new Map<string, { label: Phaser.GameObjects.Text; text: string }>();
-    private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d" | "slap", Phaser.Input.Keyboard.Key>;
+    private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d" | "slap" | "sit", Phaser.Input.Keyboard.Key>;
 
     /** 目前畫在畫面上的地圖相關物件，地圖換掉時一起清掉。 */
     private mapObjects: Phaser.GameObjects.GameObject[] = [];
@@ -71,10 +71,15 @@ export class TownScene extends Phaser.Scene {
         const kb = this.input.keyboard!;
         const K = Phaser.Input.Keyboard.KeyCodes;
         this.keys = kb.addKeys({
-            up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT, w: K.W, a: K.A, s: K.S, d: K.D, slap: K.F,
+            up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT, w: K.W, a: K.A, s: K.S, d: K.D, slap: K.F, sit: K.E,
         }) as typeof this.keys;
         // 搧旁邊的人；搧不搧得到、對方退到哪都由伺服器決定
         this.keys.slap.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => !event.repeat && this.room.send("slap"));
+        // 在遊戲桌旁按 E 入座，坐著時再按一次起身
+        this.keys.sit.on("down", (_key: Phaser.Input.Keyboard.Key, event: KeyboardEvent) => {
+            if (event.repeat) return;
+            this.room.send(this.room.state.characters?.get(this.room.sessionId)?.seatedAt ? "stand" : "sit");
+        });
 
         const callbacks = Callbacks.get(this.room);
 
@@ -109,6 +114,7 @@ export class TownScene extends Phaser.Scene {
         // 走進語音房後伺服器回的結果（切過去了、要先加入語音、bot 權限不夠），以及搧巴掌的結果（命中、冷卻中、對方關掉了）
         this.room.onMessage("voiceMove", (r: { ok: boolean; message: string }) => this.showToast(r));
         this.room.onMessage("slapResult", (r: { ok: boolean; message: string }) => this.showToast(r));
+        this.room.onMessage("tableResult", (r: { ok: boolean; message: string }) => this.showToast(r));
 
         // 有人被搧：所有人都看到對方閃一下、跳出「啪！」
         this.room.onMessage("slap", ({ to }: { from: string; to: string }) => this.playSlap(to));
@@ -180,6 +186,16 @@ export class TownScene extends Phaser.Scene {
                 .setDepth(DEPTH.roomName);
             this.mapObjects.push(label);
             this.roomLabels.set(room.id, { label, text });
+        }
+
+        // 遊戲桌：畫一張桌子和名稱；座位就是成員入座時站的位置
+        for (const table of state.tables) {
+            const top = this.add.rectangle(table.x, table.y, 24, 14, 0x6d4c2f).setStrokeStyle(1, 0x3e2a18).setDepth(DEPTH.roomName);
+            const label = this.add
+                .text(table.x, table.y, "🎲", { fontSize: "8px", resolution: 3 })
+                .setOrigin(0.5)
+                .setDepth(DEPTH.roomName);
+            this.mapObjects.push(top, label);
         }
 
         this.notice.textContent = state.notice ?? "";
@@ -259,6 +275,13 @@ export class TownScene extends Phaser.Scene {
         if (!this.walkable) return;
         // 地圖換掉後自己可能站在新牆裡：伺服器會把角色送回廣場，跟著伺服器的位置走
         const mine = this.room.state.characters?.get(this.room.sessionId);
+        // 坐在遊戲桌時不能走，位置跟著伺服器（座位）
+        if (mine?.seatedAt) {
+            this.me.x = mine.position.x;
+            this.me.y = mine.position.y;
+            this.lastSent = { ...this.me, at: time };
+            return;
+        }
         if (mine && !this.walkable.canStand(this.me.x, this.me.y)) {
             this.me.x = mine.position.x;
             this.me.y = mine.position.y;
