@@ -119,6 +119,19 @@ describe("ChipLedger", () => {
         });
     });
 
+    it("一局結算一起成功或一起失敗：有人籌碼不夠時，誰都沒被扣", () => {
+        const xiaohua = { guildId: xiaoming.guildId, userId: "2" };
+        ledger.welcome(xiaoming);
+        ledger.welcome(xiaohua);
+        ledger.change(xiaohua, -980, "bet");
+
+        assert.throws(() => ledger.settle([{ owner: xiaoming, bet: 50, payout: 100 }, { owner: xiaohua, bet: 50, payout: 0 }]), ChipError);
+        assert.strictEqual(ledger.balance(xiaoming), 1000);
+        assert.strictEqual(ledger.history(xiaoming).length, 1);
+
+        assert.deepStrictEqual(ledger.settle([{ owner: xiaoming, bet: 20, payout: 40 }, { owner: xiaohua, bet: 20, payout: 0 }]), [1020, 0]);
+    });
+
     it("每筆變動都記下原因與變動後的餘額", () => {
         ledger.welcome(xiaoming);
         ledger.checkIn(xiaoming, taipei("2026-11-21T10:00:00"));

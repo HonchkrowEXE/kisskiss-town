@@ -98,6 +98,19 @@ export class ChipLedger {
         return this.transaction(() => this.record(owner, delta, reason));
     }
 
+    /**
+     * 一局遊戲的結算：每人記一筆下注（bet），贏的人再記一筆拿回的（payout）。
+     * 全部一起成功或一起失敗，彩池不會只結算到一半。回傳每人結算後的餘額，順序同 entries。
+     */
+    settle(entries: { owner: ChipOwner; bet: number; payout: number }[]): number[] {
+        return this.transaction(() =>
+            entries.map(({ owner, bet, payout }) => {
+                const balance = this.change(owner, -bet, "bet");
+                return payout > 0 ? this.change(owner, payout, "payout") : balance;
+            }),
+        );
+    }
+
     history(owner: ChipOwner): ChipEntry[] {
         return this.db
             .prepare("SELECT reason, delta, balance, at FROM chip_entries WHERE guild_id = ? AND user_id = ? ORDER BY id")
