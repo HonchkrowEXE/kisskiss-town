@@ -30,6 +30,7 @@
     "@colyseus/schema": "^5.0.19",
     "@colyseus/tools": "^0.18.3",
     "colyseus": "^0.18.3",
+    "discord.js": "^14.28.1",
     "express": "^5.2.1"
   }
 }

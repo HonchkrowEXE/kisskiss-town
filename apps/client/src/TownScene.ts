@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import type { TownState, Direction } from "../../server/src/rooms/schema/TownState.js";
+import type { TownMapState } from "../../server/src/town/layoutTown.js";
 import { createWalkable, SPEED, type Walkable } from "../../server/src/town/walkable.js";
 
 /** hero.svg 裡四個方向的格子順序。 */
@@ -15,13 +16,24 @@ const LABEL_OFFSET = 13;
 /** 一幀最多走多久（毫秒）：分頁切回前景時 delta 會很大，一步跨太遠可能穿牆。 */
 const MAX_STEP_MS = 50;
 
+/** 房間名稱最多顯示幾個字，太長的截斷。 */
+const ROOM_NAME_MAX = 10;
+
+/** 圖層的前後順序：地圖在最下面，房間名稱、角色、名字依序往上。 */
+const DEPTH = { map: 0, roomName: 5, character: 10, name: 11 };
+
 type CharacterView = { sprite: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text };
 
 export class TownScene extends Phaser.Scene {
     private room: Room<any, TownState>;
-    private walkable!: Walkable;
+    private walkable?: Walkable;
     private views = new Map<string, CharacterView>();
     private keys!: Record<"up" | "down" | "left" | "right" | "w" | "a" | "s" | "d", Phaser.Input.Keyboard.Key>;
+
+    /** 目前畫在畫面上的地圖相關物件，地圖換掉時一起清掉。 */
+    private mapObjects: Phaser.GameObjects.GameObject[] = [];
+    private tilemap?: Phaser.Tilemaps.Tilemap;
+    private botHint = Object.assign(document.body.appendChild(document.createElement("div")), { className: "bot-hint", hidden: true });
 
     /** 自己的位置由前端先走、伺服器驗證；不合法時伺服器會傳 moveRejected 拉回來。 */
     private me = { x: 0, y: 0, dir: "down" as Direction };
@@ -34,21 +46,13 @@ export class TownScene extends Phaser.Scene {
 
     preload() {
         // 路徑不加開頭的 /，在 DC 裡才會套用 index.html 設的 .proxy/ 前綴
-        this.load.tilemapTiledJSON("town", "maps/town.json");
         this.load.svg("tiles", "maps/tiles.svg");
         this.load.spritesheet("hero", "sprites/hero.svg", { frameWidth: 16, frameHeight: 16 });
     }
 
     create() {
-        const map = this.make.tilemap({ key: "town" });
-        // 第一個參數是 Tiled JSON 裡圖塊集的名字，第二個是 preload 時取的 key
-        const tiles = map.addTilesetImage("tiles", "tiles")!;
-        map.createLayer("ground", tiles);
-        // 畫面是地圖的 3 倍大，鏡頭跟著放大 3 倍並對準地圖中央
-        this.cameras.main.setZoom(3).centerOn(map.widthInPixels / 2, map.heightInPixels / 2);
-
-        // 跟伺服器用同一份地圖資料算碰撞
-        this.walkable = createWalkable(this.cache.tilemap.get("town").data);
+        // 畫面是 960×720，放大 3 倍等於看到地圖上 320×240 的範圍
+        this.cameras.main.setZoom(3);
 
         const kb = this.input.keyboard!;
         const K = Phaser.Input.Keyboard.KeyCodes;
@@ -58,16 +62,24 @@ export class TownScene extends Phaser.Scene {
 
         const callbacks = Callbacks.get(this.room);
 
+        // 地圖由伺服器依頻道清單產生，頻道變動時整份換掉
+        callbacks.listen("map", (json) => json && this.showMap(JSON.parse(json)), true);
+
         callbacks.onAdd("characters", (character, sessionId) => {
             const { x, y } = character.position;
-            const sprite = this.add.sprite(x, y, "hero", FRAME[character.dir as Direction] ?? 0).setOrigin(0.5, 0.75);
+            const sprite = this.add
+                .sprite(x, y, "hero", FRAME[character.dir as Direction] ?? 0)
+                .setOrigin(0.5, 0.75)
+                .setDepth(DEPTH.character);
             const label = this.add
                 .text(x, y - LABEL_OFFSET, character.name, { fontSize: "8px", color: "#fff", resolution: 3 })
-                .setOrigin(0.5, 1);
+                .setOrigin(0.5, 1)
+                .setDepth(DEPTH.name);
             this.views.set(sessionId, { sprite, label });
             if (sessionId === this.room.sessionId) {
                 this.me = { x, y, dir: character.dir as Direction };
                 this.lastSent = { ...this.me, at: 0 };
+                this.cameras.main.startFollow(sprite, true);
             }
         });
 
@@ -84,6 +96,53 @@ export class TownScene extends Phaser.Scene {
             this.me.dir = pos.dir;
             this.lastSent = { ...this.me, at: this.time.now };
         });
+    }
+
+    /** 畫出伺服器給的地圖：圖塊、房間名稱，沒有 bot 時顯示提示。 */
+    private showMap(state: TownMapState) {
+        this.tilemap?.destroy();
+        for (const object of this.mapObjects) object.destroy();
+        this.mapObjects = [];
+
+        const { map, rooms } = state;
+        const data = map.layers[0].data!;
+        const rows = Array.from({ length: map.height }, (_, y) => data.slice(y * map.width, (y + 1) * map.width));
+        this.tilemap = this.make.tilemap({ data: rows, tileWidth: map.tilewidth, tileHeight: map.tileheight });
+        // 最後一個參數 1：圖塊編號從 1 開始（跟 Tiled 一樣），0 代表空格
+        const tiles = this.tilemap.addTilesetImage("tiles", "tiles", map.tilewidth, map.tileheight, 0, 0, 1)!;
+        this.tilemap.createLayer(0, tiles)!.setDepth(DEPTH.map);
+        this.cameras.main.setBounds(0, 0, map.width * map.tilewidth, map.height * map.tileheight);
+
+        for (const room of rooms) {
+            const name = room.name.length > ROOM_NAME_MAX ? `${room.name.slice(0, ROOM_NAME_MAX)}…` : room.name;
+            const icon = room.kind === "voice" ? "🔊" : "#";
+            this.mapObjects.push(
+                this.add
+                    .text(room.rect.x + room.rect.width / 2, room.rect.y + 2, `${icon} ${name}`, {
+                        fontSize: "7px",
+                        color: "#fff",
+                        resolution: 3,
+                        backgroundColor: "#00000080",
+                        padding: { x: 2, y: 1 },
+                    })
+                    .setOrigin(0.5, 0)
+                    .setDepth(DEPTH.roomName),
+            );
+        }
+
+        // 提示用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面
+        this.botHint.textContent = "這個伺服器還沒加入親親小鎮的 bot，請管理員邀請後重新打開";
+        this.botHint.hidden = !state.botMissing;
+
+        // 跟伺服器用同一份地圖資料算碰撞
+        this.walkable = createWalkable(map);
+        // 伺服器會把站在新牆裡的角色送回廣場；自己的位置也跟著伺服器
+        const mine = this.room.state.characters?.get(this.room.sessionId);
+        if (mine && !this.walkable.canStand(this.me.x, this.me.y)) {
+            this.me.x = mine.position.x;
+            this.me.y = mine.position.y;
+            this.lastSent = { ...this.me, at: this.time.now };
+        }
     }
 
     update(time: number, delta: number) {
@@ -105,6 +164,7 @@ export class TownScene extends Phaser.Scene {
 
     /** 依鍵盤移動自己，撞牆時沿著牆滑（x、y 分開判斷），再定時把位置送給伺服器。 */
     private walkMe(time: number, delta: number) {
+        if (!this.walkable) return;
         const k = this.keys;
         const dx = Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown);
         const dy = Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown);
