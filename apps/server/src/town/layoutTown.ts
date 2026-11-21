@@ -21,7 +21,11 @@ export type ChannelRoom = TownChannel & {
     rect: { x: number; y: number; width: number; height: number };
 };
 
-export type TownLayout = { map: TiledMap; rooms: ChannelRoom[]; spawn: { x: number; y: number } };
+/**
+ * 小鎮的版面：地圖、房間、出生點。
+ * images 只有匯入的自訂地圖才有（圖塊集的檔名 → 圖片）；自動長出來的小鎮用前端內建的 tiles.svg。
+ */
+export type TownLayout = { map: TiledMap; rooms: ChannelRoom[]; spawn: { x: number; y: number }; images?: Record<string, string> };
 
 /** 傳給前端的地圖：版面加上要提示成員的話（例如還讀不到頻道），沒有就是 null。 */
 export type TownMapState = TownLayout & { notice: string | null };

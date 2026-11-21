@@ -2,6 +2,7 @@ import { defineServer, defineRoom, monitor, playground, JWT } from "colyseus";
 import express, { type Request, type RequestHandler } from "express";
 import { loginWithDiscord, LoginError, type TownUser } from "./auth/discordLogin.js";
 import { photoLookRoute } from "./characters/photoRoute.js";
+import { townMapRoute } from "./town/mapRoute.js";
 
 /**
  * Import your Room files
@@ -36,6 +37,7 @@ export default defineServer({
   express: (app) => {
     // 照片要比預設的 100 KB 大，所以這條路由用自己的解析器，放在全域的前面
     app.post("/photo_look", express.json({ limit: "8mb" }), photoLookRoute);
+    app.post("/town_map", express.json({ limit: "8mb" }), townMapRoute);
     app.use(express.json());
 
     /**

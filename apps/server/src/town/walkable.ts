@@ -6,18 +6,65 @@ export const SPEED = 80;
 /** 角色的碰撞框：以腳底為中心、邊長 8px 的正方形。 */
 const COLLIDER_HALF = 4;
 
-/** Tiled JSON 裡算碰撞需要的欄位。 */
+/** Tiled 的自訂屬性。 */
+export type TiledProperty = { name: string; type?: string; value: unknown };
+
+/** Tiled 物件層裡的物件（矩形或點），座標是像素。 */
+export type TiledObject = {
+    id?: number;
+    name?: string;
+    type?: string;
+    class?: string;
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    point?: boolean;
+    properties?: TiledProperty[];
+};
+
+/** Tiled 的圖層：圖塊層（data）或物件層（objects）。 */
+export type TiledLayer = {
+    type: string;
+    name?: string;
+    visible?: boolean;
+    data?: number[];
+    objects?: TiledObject[];
+    properties?: TiledProperty[];
+};
+
+/** Tiled JSON 裡算碰撞與畫圖需要的欄位。 */
 export type TiledMap = {
     width: number;
     height: number;
     tilewidth: number;
     tileheight: number;
-    layers: { type: string; data?: number[] }[];
+    layers: TiledLayer[];
     tilesets: {
         firstgid: number;
-        tiles?: { id: number; properties?: { name: string; value: unknown }[] }[];
+        name?: string;
+        image?: string;
+        imagewidth?: number;
+        imageheight?: number;
+        tilewidth?: number;
+        tileheight?: number;
+        columns?: number;
+        tilecount?: number;
+        margin?: number;
+        spacing?: number;
+        tiles?: { id: number; properties?: TiledProperty[] }[];
     }[];
 };
+
+const isTrue = (properties: TiledProperty[] | undefined, name: string) => properties?.some((p) => p.name === name && p.value === true) ?? false;
+
+/** 整層都是牆的圖塊層：tilemap.dev 的 Collision 圖層，或有 `collidable: true` 屬性的圖層。 */
+export const isCollisionLayer = (layer: TiledLayer) =>
+    layer.type === "tilelayer" && (/^collisions?$/i.test(layer.name ?? "") || isTrue(layer.properties, "collidable"));
+
+/** 每個矩形都是牆的物件層：tilemap.dev 的 Colliders 群組，或有 `collidable: true` 屬性的物件層。 */
+export const isColliderGroup = (layer: TiledLayer) =>
+    layer.type === "objectgroup" && (/^colliders?$/i.test(layer.name ?? "") || isTrue(layer.properties, "collidable"));
 
 export type Walkable = {
     /** 角色腳底站在 (x, y) 時，碰撞框有沒有碰到牆或超出地圖。 */
@@ -27,26 +74,40 @@ export type Walkable = {
 };
 
 /**
- * 從 Tiled 地圖算出哪些格子不能走：圖塊集裡標了 `collides: true` 的圖塊就是牆。
- * ponytail: tilemap.dev 不能加自訂屬性（ADR-0006），它匯出的地圖會沒有牆；#5 匯入地圖時要決定碰撞怎麼標。
+ * 從 Tiled 地圖算出哪些格子不能走（ADR-0011）。這幾種都算牆：
+ * - 圖塊集裡標了 `collides: true` 的圖塊（Tiled 的慣例，自動長出來的小鎮也用這個）
+ * - Collision 圖層、或有 `collidable: true` 屬性的圖塊層上，有放圖塊的格子（tilemap.dev）
+ * - Colliders 物件群組、或有 `collidable: true` 屬性的物件層裡，矩形蓋到的格子（tilemap.dev）
  */
 export function createWalkable(map: TiledMap): Walkable {
     const blockedGids = new Set<number>();
     for (const tileset of map.tilesets) {
         for (const tile of tileset.tiles ?? []) {
-            if (tile.properties?.some((p) => p.name === "collides" && p.value === true)) {
-                blockedGids.add(tileset.firstgid + tile.id);
-            }
+            if (isTrue(tile.properties, "collides")) blockedGids.add(tileset.firstgid + tile.id);
         }
     }
 
-    // 任何一個圖塊層在這格放了牆，這格就不能走
+    // 任何一層在這格放了牆，這格就不能走
     const blocked = new Array<boolean>(map.width * map.height).fill(false);
     for (const layer of map.layers) {
-        if (layer.type !== "tilelayer" || !layer.data) continue;
-        layer.data.forEach((gid, i) => {
-            if (blockedGids.has(gid)) blocked[i] = true;
-        });
+        if (layer.type === "tilelayer" && layer.data) {
+            const wholeLayer = isCollisionLayer(layer);
+            layer.data.forEach((gid, i) => {
+                if (wholeLayer ? gid !== 0 : blockedGids.has(gid)) blocked[i] = true;
+            });
+        }
+        if (isColliderGroup(layer)) {
+            for (const o of layer.objects ?? []) {
+                if (!o.width || !o.height) continue; // 點或沒有大小的物件不算牆
+                const left = Math.floor(o.x / map.tilewidth);
+                const right = Math.ceil((o.x + o.width) / map.tilewidth) - 1;
+                const top = Math.floor(o.y / map.tileheight);
+                const bottom = Math.ceil((o.y + o.height) / map.tileheight) - 1;
+                for (let ty = Math.max(0, top); ty <= Math.min(map.height - 1, bottom); ty++) {
+                    for (let tx = Math.max(0, left); tx <= Math.min(map.width - 1, right); tx++) blocked[ty * map.width + tx] = true;
+                }
+            }
+        }
     }
 
     const isBlockedTile = (tx: number, ty: number) =>

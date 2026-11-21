@@ -1,12 +1,12 @@
 import Phaser from "phaser";
 import type { TownMapState } from "../../../server/src/town/layoutTown.js";
-import { createWalkable, type Walkable } from "../../../server/src/town/walkable.js";
+import { createWalkable, isCollisionLayer, type Walkable } from "../../../server/src/town/walkable.js";
 import { DEPTH } from "./look.js";
 
 /** 房間名稱最多顯示幾個字，太長的截斷。 */
 const ROOM_NAME_MAX = 10;
 
-/** 小鎮的地圖：圖塊、房間名稱，以及沒有 bot 之類的提示。頻道變動時整份重畫。遊戲桌在 TableLayer。 */
+/** 小鎮的地圖：圖塊、房間名稱，以及沒有 bot 之類的提示。頻道變動或管理員換地圖時整份重畫。遊戲桌在 TableLayer。 */
 export class MapView {
     /** 目前地圖的碰撞判斷（跟伺服器用同一份地圖資料算）；還沒收到地圖時是 undefined。 */
     walkable?: Walkable;
@@ -25,16 +25,18 @@ export class MapView {
         this.scene = scene;
     }
 
-    /** 畫出伺服器給的地圖。 */
+    /** 第幾次收到地圖；圖片載入是非同步的，載完時地圖已經又換了就不畫。 */
+    private version = 0;
+    /** 圖片（data URL）→ 已載入的材質名稱，同一張圖不重複載入。 */
+    private textures = new Map<string, string>();
+
+    /** 畫出伺服器給的地圖：自動長出來的小鎮用內建圖塊，匯入的自訂地圖用它自己的圖塊圖片。 */
     show(state: TownMapState) {
+        const version = ++this.version;
         this.clear();
         const { map, rooms } = state;
-        const data = map.layers[0].data!;
-        const rows = Array.from({ length: map.height }, (_, y) => data.slice(y * map.width, (y + 1) * map.width));
-        this.tilemap = this.scene.make.tilemap({ data: rows, tileWidth: map.tilewidth, tileHeight: map.tileheight });
-        // 最後一個參數 1：圖塊編號從 1 開始（跟 Tiled 一樣），0 代表空格
-        const tiles = this.tilemap.addTilesetImage("tiles", "tiles", map.tilewidth, map.tileheight, 0, 0, 1)!;
-        this.tilemap.createLayer(0, tiles)!.setDepth(DEPTH.map);
+        if (state.images) void this.drawCustom(state, version);
+        else this.drawAuto(state);
         this.scene.cameras.main.setBounds(0, 0, map.width * map.tilewidth, map.height * map.tileheight);
 
         for (const room of rooms) {
@@ -57,6 +59,44 @@ export class MapView {
         this.notice.textContent = state.notice ?? "";
         this.notice.hidden = !state.notice;
         this.walkable = createWalkable(map);
+    }
+
+    /** 自動長出來的小鎮：一層圖塊，用內建的 tiles.svg。 */
+    private drawAuto({ map }: TownMapState) {
+        const data = map.layers[0].data!;
+        const rows = Array.from({ length: map.height }, (_, y) => data.slice(y * map.width, (y + 1) * map.width));
+        this.tilemap = this.scene.make.tilemap({ data: rows, tileWidth: map.tilewidth, tileHeight: map.tileheight });
+        // 最後一個參數 1：圖塊編號從 1 開始（跟 Tiled 一樣），0 代表空格
+        const tiles = this.tilemap.addTilesetImage("tiles", "tiles", map.tilewidth, map.tileheight, 0, 0, 1)!;
+        this.tilemap.createLayer(0, tiles)!.setDepth(DEPTH.map);
+    }
+
+    /** 匯入的自訂地圖：先載入圖塊圖片，再交給 Phaser 讀 Tiled JSON；碰撞用的圖層不畫。 */
+    private async drawCustom(state: TownMapState, version: number) {
+        const { map, images } = state;
+        const keys = await Promise.all(map.tilesets.map((ts) => this.loadImage(images![ts.image!])));
+        if (version !== this.version) return;
+        const cacheKey = `custom-map-${version}`;
+        this.scene.cache.tilemap.add(cacheKey, { format: Phaser.Tilemaps.Formats.TILED_JSON, data: map });
+        const tilemap = this.scene.make.tilemap({ key: cacheKey });
+        this.tilemap = tilemap;
+        const tilesets = map.tilesets.map((ts, i) => tilemap.addTilesetImage(ts.name!, keys[i])!).filter(Boolean);
+        for (const layer of map.layers) {
+            if (layer.type !== "tilelayer" || layer.visible === false || isCollisionLayer(layer)) continue;
+            tilemap.createLayer(layer.name!, tilesets)?.setDepth(DEPTH.map);
+        }
+    }
+
+    /** 把 data URL 載入成材質，回傳材質名稱。 */
+    private loadImage(dataUrl: string) {
+        const known = this.textures.get(dataUrl);
+        if (known) return Promise.resolve(known);
+        const key = `map-image-${this.textures.size}`;
+        this.textures.set(dataUrl, key);
+        return new Promise<string>((resolve) => {
+            this.scene.textures.once(`addtexture-${key}`, () => resolve(key));
+            this.scene.textures.addBase64(key, dataUrl);
+        });
     }
 
     /** 有人直播的語音房，房名後面加上「直播中」。 */
