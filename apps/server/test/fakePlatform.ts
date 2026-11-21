@@ -1,4 +1,4 @@
-import { MoveRefused, type Platform, type VoiceMember } from "../src/platform/platform.js";
+import { MoveRefused, TextRefused, type Platform, type TownMessage, type VoiceMember } from "../src/platform/platform.js";
 import type { TownChannel } from "../src/town/layoutTown.js";
 
 /** 測試用的平台：頻道清單由測試決定，也能手動觸發「頻道變動」。沒設定的伺服器當作 bot 沒加入。 */
@@ -11,6 +11,11 @@ export function createFakePlatform() {
     const moves: { guildId: string; userId: string; channelId: string }[] = [];
     /** 發到通知頻道的訊息，給測試檢查。 */
     const announcements: { guildId: string; text: string }[] = [];
+    const messages = new Map<string, TownMessage[]>(); // key 是頻道 ID
+    const messageListeners = new Map<string, Set<(channelId: string, message: TownMessage) => void>>();
+    /** 用成員身分發出的訊息，給測試檢查。 */
+    const sent: { guildId: string; channelId: string; userId: string; name: string; text: string }[] = [];
+    let textRefusal: string | undefined;
     let refuseMoves = false;
 
     const platform: Platform = {
@@ -42,12 +47,37 @@ export function createFakePlatform() {
         async announce(guildId, text) {
             announcements.push({ guildId, text });
         },
+        async recentMessages(_guildId, channelId) {
+            if (textRefusal) throw new TextRefused(textRefusal);
+            return messages.get(channelId) ?? [];
+        },
+        onMessage(guildId, listener) {
+            if (!messageListeners.has(guildId)) messageListeners.set(guildId, new Set());
+            messageListeners.get(guildId)!.add(listener);
+            return () => messageListeners.get(guildId)!.delete(listener);
+        },
+        async sendAs(guildId, channelId, userId, name, text) {
+            if (textRefusal) throw new TextRefused(textRefusal);
+            sent.push({ guildId, channelId, userId, name, text });
+        },
     };
 
     return {
         platform,
         moves,
         announcements,
+        sent,
+        /** 之後讀訊息、發言都當作被拒絕（例如沒打開 Message Content），原因是 reason；給 undefined 恢復。 */
+        setTextRefusal(reason: string | undefined) {
+            textRefusal = reason;
+        },
+        setMessages(channelId: string, list: TownMessage[]) {
+            messages.set(channelId, list);
+        },
+        /** 模擬 Discord 送來新訊息的事件。 */
+        emitMessage(guildId: string, channelId: string, message: TownMessage) {
+            for (const listener of messageListeners.get(guildId) ?? []) listener(channelId, message);
+        },
         /** 之後的搬人要求都當作 bot 權限不夠。 */
         setRefuseMoves(value: boolean) {
             refuseMoves = value;

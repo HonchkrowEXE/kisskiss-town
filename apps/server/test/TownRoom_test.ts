@@ -817,3 +817,111 @@ describe("遊戲桌與骰子比大小", () => {
         assert.strictEqual(a.character.position.y, y - 8);
     });
 });
+
+describe("文字房", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => {
+        await colyseus.cleanup();
+        fakePlatform.sent.length = 0;
+        fakePlatform.setMessages("c1", [{ id: "m1", author: "老王", content: "大家好", at: 1 }]);
+    });
+    afterEach(() => fakePlatform.setTextRefusal(undefined));
+
+    type Panel = { channelId: string; name: string; messages: { content: string }[]; notice: string | null } | null;
+
+    let nextId = 4000;
+    /** 進小鎮，站到第 roomIndex 間房的門外；回傳走進去、走出來的函式和收到的面板訊息。 */
+    async function standOutside(roomIndex: number) {
+        const user = { id: `${nextId++}`, name: "小明", guildId: GUILD_A };
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const room = server.layout.rooms[roomIndex];
+        const character = server.state.characters.get(client.sessionId);
+        const doorX = room.rect.x + room.rect.width / 2;
+        Object.assign(character.position, { x: doorX, y: room.rect.y - 24 });
+        const panels: Panel[] = [];
+        const live: unknown[] = [];
+        const results: { ok: boolean; message: string }[] = [];
+        client.onMessage("textRoom", (p: Panel) => panels.push(p));
+        client.onMessage("textMessage", (m: unknown) => live.push(m));
+        client.onMessage("textResult", (r: { ok: boolean; message: string }) => results.push(r));
+
+        async function step(dy: number) {
+            client.send("move", { x: doorX, y: character.position.y + dy, dir: dy > 0 ? "down" : "up" });
+            await server.waitForMessage("move");
+            await new Promise((r) => setTimeout(r, 220));
+        }
+        async function say(text: unknown) {
+            client.send("say", text);
+            await server.waitForMessage("say");
+            await new Promise((r) => setTimeout(r, 20));
+            return results.at(-1);
+        }
+        return {
+            client, server, user, room, panels, live, results, say,
+            enter: async () => { await step(16); await step(16); },
+            leave: async () => { await step(-16); await step(-16); },
+        };
+    }
+
+    it("走進文字房看到最新訊息，離開時面板收起", async () => {
+        const { room, panels, enter, leave } = await standOutside(1); // c1 是文字房
+
+        await enter();
+        assert.deepStrictEqual(panels.at(-1), { channelId: room.id, name: room.name, messages: [{ id: "m1", author: "老王", content: "大家好", at: 1 }], notice: null });
+
+        await leave();
+        assert.strictEqual(panels.at(-1), null);
+    });
+
+    it("新訊息即時送給站在那間文字房裡的人，不在房裡的人收不到", async () => {
+        const inside = await standOutside(1);
+        await inside.enter();
+        const outside = await standOutside(3);
+
+        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m2", author: "老王", content: "有人嗎", at: 2 });
+        await new Promise((r) => setTimeout(r, 50));
+
+        assert.deepStrictEqual(inside.live, [{ channelId: "c1", message: { id: "m2", author: "老王", content: "有人嗎", at: 2 } }]);
+        assert.deepStrictEqual(outside.live, []);
+    });
+
+    it("在文字房發言：以成員的名字發到那個頻道", async () => {
+        const { user, say, enter } = await standOutside(1);
+        await enter();
+
+        assert.strictEqual(await say("  晚安  "), undefined);
+        assert.deepStrictEqual(fakePlatform.sent, [{ guildId: GUILD_A, channelId: "c1", userId: user.id, name: "小明", text: "晚安" }]);
+    });
+
+    it("不在文字房、空白、太長、發太快都不會發出去，並告訴原因", async () => {
+        const { say, enter } = await standOutside(1);
+        assert.deepStrictEqual(await say("哈囉"), { ok: false, message: "要站在文字房裡才能發言" });
+        await enter();
+        assert.deepStrictEqual(await say("   "), { ok: false, message: "訊息不能是空的" });
+        assert.deepStrictEqual(await say(42), { ok: false, message: "訊息不能是空的" });
+        assert.deepStrictEqual(await say("a".repeat(2001)), { ok: false, message: "訊息最多 2000 字" });
+        await say("第一則");
+        assert.deepStrictEqual(await say("第二則"), { ok: false, message: "發太快了，等一下再發" });
+        assert.strictEqual(fakePlatform.sent.length, 1);
+    });
+
+    it("讀不到訊息（例如沒打開 Message Content）時面板顯示原因，不是空白", async () => {
+        fakePlatform.setTextRefusal("bot 還讀不到訊息內容");
+        const { panels, enter, say } = await standOutside(1);
+
+        await enter();
+        assert.deepStrictEqual(panels.at(-1)?.notice, "bot 還讀不到訊息內容");
+        assert.deepStrictEqual(await say("哈囉"), { ok: false, message: "bot 還讀不到訊息內容" });
+    });
+
+    it("走進語音房不會打開文字面板", async () => {
+        const { panels, enter } = await standOutside(0);
+        await enter();
+        assert.deepStrictEqual(panels, []);
+    });
+});
