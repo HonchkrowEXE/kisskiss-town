@@ -6,6 +6,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .chip-hud button:focus-visible { outline: 2px solid #fff; }
 .chip-result.error { color: #ff8a80; }
 .slappable { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+.admin-notify select { font: inherit; padding: 2px 4px; border-radius: 4px; }
 .map-notice { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 8px 12px; border-radius: 4px; background: #b3261e; font: 14px sans-serif; }
 .toast { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); padding: 8px 12px; border-radius: 4px; background: #1e6b3a; font: 14px sans-serif; }
 .toast.error { background: #b3261e; }

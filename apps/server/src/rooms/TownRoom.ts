@@ -9,6 +9,7 @@ import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure, GameTable, type Di
 import { placeVoiceFigures } from "../town/placeVoiceFigures.js";
 import { findSlapTarget, knockback } from "../town/slap.js";
 import { MemberSettings } from "../members/MemberSettings.js";
+import { TownSettings } from "../town/TownSettings.js";
 import { DICE_STAKE, DiceError, emptyRound, joinRound, leaveRound, settleRound, type DiceRound } from "../games/diceDuel.js";
 import { randomInt } from "node:crypto";
 
@@ -50,6 +51,7 @@ export class TownRoom extends Room<{
   walkable = createWalkable(this.layout.map);
   ledger = new ChipLedger(database());
   settings = new MemberSettings(database());
+  townSettings = new TownSettings(database());
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
@@ -93,6 +95,7 @@ export class TownRoom extends Room<{
     this.onMessage("bet", (client) => this.bet(client));
     this.onMessage("roll", (client) => this.roll(client));
     this.onMessage("say", (client, text: unknown) => this.say(client, text));
+    this.onMessage("setNotifyChannel", (client, channelId: unknown) => this.setNotifyChannel(client, channelId));
     this.onMessage("setSlappable", (client, value: unknown) => {
       if (typeof value !== "boolean" || this.state.characters.get(client.sessionId)?.slappable === value) return;
       this.settings.setSlappable(chipOwnerOf(client), value);
@@ -351,8 +354,30 @@ export class TownRoom extends Room<{
     this.broadcast("slap", { from: client.sessionId, to: targetId });
     say(true, `啪！你搧了 ${target.name}`);
     platform()
-      .announce(client.auth.guildId, `👋 ${me.name} 在親親小鎮搧了 ${target.name} 一巴掌！`)
+      .announce(client.auth.guildId, `👋 ${me.name} 在親親小鎮搧了 ${target.name} 一巴掌！`, this.townSettings.notifyChannel(client.auth.guildId))
       .catch((e) => console.warn("搧巴掌通知發不出去：", e instanceof Error ? e.message : e));
+  }
+
+  /** 管理員一進小鎮就收到管理員的設定（目前是通知頻道），前端才顯示設定選單。 */
+  private async tellAdmin(client: Client) {
+    const isAdmin = await platform().isAdmin(client.auth.guildId, client.auth.id).catch(() => false);
+    if (isAdmin) client.send("admin", { notifyChannel: this.townSettings.notifyChannel(client.auth.guildId) ?? "" });
+  }
+
+  /** 管理員改通知頻道：每次都重新確認是管理員；只能選小鎮上的文字房，給空字串改回系統訊息頻道。 */
+  private async setNotifyChannel(client: Client, channelId: unknown) {
+    const tell = (ok: boolean, message: string) => client.send("adminResult", { ok, message });
+    const guildId = client.auth.guildId;
+    const isAdmin = await platform().isAdmin(guildId, client.auth.id).catch(() => false);
+    if (!isAdmin) return tell(false, "只有管理員（有「管理伺服器」權限）能改");
+    if (channelId === "") {
+      this.townSettings.setNotifyChannel(guildId, undefined);
+      return tell(true, "搧巴掌通知改回伺服器的系統訊息頻道");
+    }
+    const room = this.layout.rooms.find((r) => r.id === channelId && r.kind === "text");
+    if (!room) return tell(false, "只能選小鎮上的文字頻道");
+    this.townSettings.setNotifyChannel(guildId, room.id);
+    tell(true, `搧巴掌通知改發在 #${room.name}`);
   }
 
   /** 走到遊戲桌旁入座：站到空的座位上，坐著時不能走動。 */
@@ -496,6 +521,7 @@ export class TownRoom extends Room<{
       slappable: this.settings.slappable(chipOwnerOf(client)),
     }));
     this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
+    void this.tellAdmin(client);
   }
 
   onLeave (client: Client, code: CloseCode) {

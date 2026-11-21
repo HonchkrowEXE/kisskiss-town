@@ -108,6 +108,9 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             announce: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
+            isAdmin: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
             recentMessages: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
@@ -264,14 +267,26 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             }
         },
 
-        async announce(guildId, text) {
+        async announce(guildId, text, channelId) {
             await waitReady();
-            // ponytail: 先發在伺服器設定的「系統訊息頻道」。要讓管理員自己指定頻道，得加斜線指令（bot 要重新邀請、多要 applications.commands）
-            const channel = client.guilds.cache.get(guildId)?.systemChannel;
+            // 管理員在小鎮裡指定的頻道；沒指定（或那個頻道不見了）就發在伺服器設定的「系統訊息頻道」
+            const guild = client.guilds.cache.get(guildId);
+            const chosen = channelId ? guild?.channels.cache.get(channelId) : undefined;
+            const channel =
+                chosen?.type === ChannelType.GuildText || chosen?.type === ChannelType.GuildAnnouncement ? chosen : guild?.systemChannel;
             const me = client.user;
             if (!channel || !me || !channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return;
             // 名字是成員自己取的，跳脫 Markdown、不解析 @，避免變成格式或 @everyone
             await channel.send({ content: escapeMarkdown(text), allowedMentions: { parse: [] } });
+        },
+
+        async isAdmin(guildId, userId) {
+            await waitReady();
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) return false;
+            // 直接問 Discord：沒有 GUILD_MEMBERS intent，身分組的變動收不到，快取可能是舊的
+            const member = await guild.members.fetch({ user: userId, force: true }).catch((): null => null);
+            return member?.permissions.has(PermissionFlagsBits.ManageGuild) ?? false;
         },
 
         async recentMessages(guildId, channelId, userId) {
