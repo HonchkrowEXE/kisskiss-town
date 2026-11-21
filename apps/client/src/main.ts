@@ -3,6 +3,7 @@ import Phaser from "phaser";
 import { Client } from "@colyseus/sdk";
 import { login } from "./login.js";
 import { TownScene } from "./TownScene.js";
+import { mountChipHud } from "./chipHud.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 // 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
@@ -28,6 +29,9 @@ try {
     room.onReconnect(() => show(""));
     room.onError((code, message) => show(`小鎮出錯了（${code}）：${message ?? ""}`));
     room.onLeave(() => show("和小鎮的連線中斷了，請關掉親親小鎮再打開"));
+
+    mountChipHud(room);
+
 
     new Phaser.Game({
         parent: app,

@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED, type TiledMap } from "../town/walkable.js";
+import { ChipLedger, ChipError } from "../chips/ChipLedger.js";
+import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 
 // ponytail: 每座小鎮都用前端內建的預設地圖；#5（匯入地圖）改成讀各伺服器自己的地圖
@@ -29,6 +31,7 @@ export class TownRoom extends Room<{
 }> {
   state = new TownState();
   walkable = createWalkable(DEFAULT_MAP);
+  ledger = new ChipLedger(database());
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
@@ -47,6 +50,8 @@ export class TownRoom extends Room<{
 
   onCreate (options: any) {
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
+    this.onMessage("checkIn", (client) => this.chips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
+    this.onMessage("claimRelief", (client) => this.chips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
   }
 
   /** 前端算好的新位置。不合法就不採用，並把伺服器上的位置傳回去讓前端拉回來。 */
@@ -77,11 +82,25 @@ export class TownRoom extends Room<{
     character.dir = dir;
   }
 
+  /** 經籌碼帳本改餘額，結果（成功或被拒的原因）傳回給那位成員。 */
+  private chips(client: Client, action: (owner: { guildId: string; userId: string }) => number, okMessage: string) {
+    const character = this.state.characters.get(client.sessionId);
+    if (!character) return;
+    try {
+      character.chips = action({ guildId: client.auth.guildId, userId: client.auth.id });
+      client.send("chipResult", { ok: true, message: okMessage });
+    } catch (e) {
+      if (!(e instanceof ChipError)) throw e;
+      client.send("chipResult", { ok: false, message: e.message });
+    }
+  }
+
   onJoin (client: Client, options: any) {
     console.log(client.sessionId, "joined!");
     this.state.characters.set(client.sessionId, new Character({
       name: client.auth.name,
       position: new Vec2(this.walkable.randomSpawn()),
+      chips: this.ledger.welcome({ guildId: client.auth.guildId, userId: client.auth.id }),
     }));
     this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
   }

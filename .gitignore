@@ -7,3 +7,6 @@ dist/
 .claude/worktrees/
 *.log
 .playwright-mcp/
+
+# 本機資料庫（ADR-0009）
+apps/server/data/

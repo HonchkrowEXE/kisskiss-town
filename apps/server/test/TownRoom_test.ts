@@ -187,3 +187,57 @@ describe("走動", () => {
         assert.deepStrictEqual([character.position.x, character.position.y, character.dir], [24, 24, "down"]);
     });
 });
+
+describe("籌碼", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => colyseus.cleanup());
+
+    /** 每個測試用不同的成員，資料庫在整個測試程序裡共用。 */
+    let nextId = 1000;
+    async function enter() {
+        const user = { id: `${nextId++}`, name: "小明", guildId: GUILD_A };
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const results: { ok: boolean; message: string }[] = [];
+        client.onMessage("chipResult", (r: { ok: boolean; message: string }) => results.push(r));
+        async function send(type: string) {
+            client.send(type);
+            await server.waitForMessage(type);
+            await server.waitForNextPatch();
+            return results.at(-1);
+        }
+        return { client, server, user, send, chips: () => client.state.characters.get(client.sessionId).chips };
+    }
+
+    it("第一次進小鎮看得到 1000 籌碼，離開再進來不會重拿", async () => {
+        const { client, user, chips } = await enter();
+        assert.strictEqual(chips(), 1000);
+
+        await client.leave();
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const again = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        await colyseus.getRoomById(again.roomId).waitForNextPatch();
+        assert.strictEqual(again.state.characters.get(again.sessionId).chips, 1000);
+    });
+
+    it("簽到後餘額更新；同一天再簽被拒並收到原因", async () => {
+        const { send, chips } = await enter();
+
+        assert.deepStrictEqual(await send("checkIn"), { ok: true, message: "簽到成功" });
+        assert.strictEqual(chips(), 1200);
+
+        assert.deepStrictEqual(await send("checkIn"), { ok: false, message: "今天已經簽到過了" });
+        assert.strictEqual(chips(), 1200);
+    });
+
+    it("還有籌碼時領救濟金被拒", async () => {
+        const { send, chips } = await enter();
+
+        assert.deepStrictEqual(await send("claimRelief"), { ok: false, message: "籌碼歸零才能領救濟金" });
+        assert.strictEqual(chips(), 1000);
+    });
+});
