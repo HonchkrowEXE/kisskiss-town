@@ -10,6 +10,7 @@ import { TablePanel } from "./ui/TablePanel.js";
 import { TextPanel } from "./ui/TextPanel.js";
 import { Toast } from "./ui/Toast.js";
 import { TouchControls } from "./ui/TouchControls.js";
+import { WardrobePanel } from "./ui/WardrobePanel.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 // 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
@@ -25,6 +26,7 @@ try {
     new ConnectionNotice(room);
     new Toast(room);
     const hud = new ChipHud(room);
+    new WardrobePanel(room, hud.element);
     new AdminControls(room, hud.element);
     new TablePanel(room);
     new TextPanel(room);

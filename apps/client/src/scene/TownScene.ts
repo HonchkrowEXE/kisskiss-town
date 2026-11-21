@@ -33,7 +33,7 @@ export class TownScene extends Phaser.Scene {
     preload() {
         // 路徑不加開頭的 /，在 DC 裡才會套用 index.html 設的 .proxy/ 前綴
         this.load.svg("tiles", "maps/tiles.svg");
-        this.load.spritesheet("hero", "sprites/hero.svg", { frameWidth: 16, frameHeight: 16 });
+        // 角色圖不用載入：依每個人的外觀在 characterArt 裡畫出來
     }
 
     create() {

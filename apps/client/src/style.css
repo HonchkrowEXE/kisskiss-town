@@ -9,6 +9,13 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .admin-notify select, .admin-tables select { font: inherit; padding: 2px 4px; border-radius: 4px; }
 .admin-tables { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .admin-tables button { font: inherit; padding: 2px 8px; border: 0; border-radius: 4px; background: #9ecbff; color: #222; cursor: pointer; }
+.wardrobe-panel { position: fixed; left: 16px; top: 56px; max-width: calc(100vw - 32px); max-height: calc(100vh - 72px); overflow-y: auto; padding: 12px; border-radius: 6px; background: #2b2233ee; font: 14px sans-serif; }
+.wardrobe-panel h2 { margin: 0 0 8px; font-size: 15px; }
+.wardrobe-panel canvas { display: block; margin-bottom: 8px; image-rendering: pixelated; background: #8bbf7a; border-radius: 4px; }
+.wardrobe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin-bottom: 8px; }
+.wardrobe-fields label { display: flex; flex-direction: column; gap: 2px; }
+.wardrobe-fields select { font: inherit; padding: 2px 4px; border-radius: 4px; }
+.wardrobe-panel button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .table-hint { color: #c8e6c9; font-size: 12px; }
 .table-form { display: flex; flex-direction: column; gap: 6px; }
 .table-form input { width: 4em; font: inherit; }
