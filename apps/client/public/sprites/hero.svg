@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16" shape-rendering="crispEdges">
+  <!-- 預設角色，四格 16×16：朝下、朝左、朝右、朝上。#9 換成 LPC 部件 -->
+  <defs>
+    <g id="body">
+      <rect x="4" y="8" width="8" height="5" fill="#d9534f"/>
+      <rect x="5" y="13" width="2" height="3" fill="#3b4a6b"/>
+      <rect x="9" y="13" width="2" height="3" fill="#3b4a6b"/>
+      <rect x="5" y="4" width="6" height="4" fill="#f2c9a0"/>
+    </g>
+  </defs>
+  <!-- 朝下 -->
+  <use href="#body"/>
+  <rect x="5" y="2" width="6" height="2" fill="#4a3020"/>
+  <rect x="6" y="5" width="1" height="1" fill="#222"/>
+  <rect x="9" y="5" width="1" height="1" fill="#222"/>
+  <!-- 朝左 -->
+  <use href="#body" x="16"/>
+  <rect x="21" y="2" width="6" height="2" fill="#4a3020"/>
+  <rect x="24" y="4" width="3" height="3" fill="#4a3020"/>
+  <rect x="22" y="5" width="1" height="1" fill="#222"/>
+  <!-- 朝右 -->
+  <use href="#body" x="32"/>
+  <rect x="37" y="2" width="6" height="2" fill="#4a3020"/>
+  <rect x="37" y="4" width="3" height="3" fill="#4a3020"/>
+  <rect x="41" y="5" width="1" height="1" fill="#222"/>
+  <!-- 朝上 -->
+  <use href="#body" x="48"/>
+  <rect x="53" y="2" width="6" height="6" fill="#4a3020"/>
+</svg>
