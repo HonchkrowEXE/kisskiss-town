@@ -19,5 +19,6 @@ export type Character = SchemaType<typeof Character>;
 
 export const TownState = schema({
     characters: t.map(Character),
+    map: t.string(), // TownMapState 的 JSON：地圖、房間、出生點；頻道變動時整份換掉
 }, "TownState");
 export type TownState = SchemaType<typeof TownState>;

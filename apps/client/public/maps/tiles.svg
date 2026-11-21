@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16" shape-rendering="crispEdges">
-  <!-- 第 1 格：地板 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="16" shape-rendering="crispEdges">
+  <!-- 順序要和 apps/server/src/town/layoutTown.ts 的 TILE 一致 -->
+  <!-- 第 1 格：地板（廣場、走廊） -->
   <rect x="0" y="0" width="16" height="16" fill="#8fbf7f"/>
   <rect x="3" y="4" width="1" height="1" fill="#7aa86b"/>
   <rect x="11" y="10" width="1" height="1" fill="#7aa86b"/>
@@ -8,4 +9,14 @@
   <rect x="16" y="7" width="16" height="1" fill="#54463d"/>
   <rect x="23" y="0" width="1" height="7" fill="#54463d"/>
   <rect x="19" y="8" width="1" height="8" fill="#54463d"/>
+  <!-- 第 3 格：語音房地板（藍色地毯） -->
+  <rect x="32" y="0" width="16" height="16" fill="#5b7bb5"/>
+  <rect x="32" y="0" width="16" height="1" fill="#6d8cc4"/>
+  <rect x="32" y="8" width="16" height="1" fill="#6d8cc4"/>
+  <!-- 第 4 格：文字房地板（木頭地板） -->
+  <rect x="48" y="0" width="16" height="16" fill="#c9a56b"/>
+  <rect x="48" y="5" width="16" height="1" fill="#b38f57"/>
+  <rect x="48" y="11" width="16" height="1" fill="#b38f57"/>
+  <rect x="55" y="0" width="1" height="5" fill="#b38f57"/>
+  <rect x="59" y="6" width="1" height="5" fill="#b38f57"/>
 </svg>

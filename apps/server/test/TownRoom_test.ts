@@ -2,8 +2,9 @@ import assert from "assert";
 import type { ColyseusTestServer } from "@colyseus/testing";
 import { JWT } from "colyseus";
 import type appConfig from "../src/app.config.js";
-import { testServer } from "./testServer.js";
+import { testServer, fakePlatform, DEFAULT_TEST_CHANNELS } from "./testServer.js";
 import type { TownRoom } from "../src/rooms/TownRoom.js";
+import type { TownMapState } from "../src/town/layoutTown.js";
 import { createWalkable } from "../src/town/walkable.js";
 
 const GUILD_A = "9000000000000000001";
@@ -47,6 +48,19 @@ describe("小鎮房間", () => {
         for (const token of [await JWT.sign(xiaoming, { expiresIn: -10 }), "not-a-jwt"]) {
             colyseus.sdk.auth.token = token;
             await assert.rejects(colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A }), (e: any) => e.code === 401);
+        }
+    });
+
+    it("伺服器設定有問題（例如 JWT_SECRET 沒設）時不偽裝成 401", async () => {
+        const verify = JWT.verify;
+        (JWT as any).verify = async () => {
+            throw Object.assign(new Error("secret or public key must be provided"), { name: "JsonWebTokenError" });
+        };
+        try {
+            colyseus.sdk.auth.token = "anything";
+            await assert.rejects(colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A }), (e: any) => e.code !== 401);
+        } finally {
+            (JWT as any).verify = verify;
         }
     });
 
@@ -250,5 +264,63 @@ describe("籌碼", () => {
         await first.send("checkIn");
 
         assert.strictEqual(second.state.characters.get(second.sessionId).chips, 1200);
+    });
+});
+
+describe("小鎮地圖從頻道長出來", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => colyseus.cleanup());
+    afterEach(() => fakePlatform.setChannels(GUILD_A, DEFAULT_TEST_CHANNELS));
+
+    async function enter(guildId = GUILD_A) {
+        colyseus.sdk.auth.token = await JWT.sign({ id: "1", name: "小明", guildId });
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const map = () => JSON.parse(client.state.map) as TownMapState;
+        return { client, server, map };
+    }
+
+    it("每個頻道一個房間，前端拿得到房間名稱", async () => {
+        const { map } = await enter();
+
+        assert.deepStrictEqual(map().rooms.map((r) => r.name), DEFAULT_TEST_CHANNELS.map((c) => c.name));
+        assert.strictEqual(map().botMissing, false);
+    });
+
+    it("頻道變動時，在線成員的地圖跟著更新", async () => {
+        const { server, map } = await enter();
+
+        fakePlatform.setChannels(GUILD_A, [{ id: "new", name: "新頻道", kind: "voice" }]);
+        fakePlatform.emitChange(GUILD_A);
+        await server.waitForNextPatch();
+        await server.waitForNextPatch();
+
+        assert.deepStrictEqual(map().rooms.map((r) => r.name), ["新頻道"]);
+    });
+
+    it("地圖變小時，站在新牆裡的角色被送回廣場", async () => {
+        const { client, server } = await enter();
+        const character = server.state.characters.get(client.sessionId);
+        // 站到第二排房間裡（只有很多頻道時才存在）
+        const room = server.layout.rooms[5];
+        character.position.x = room.rect.x + 8;
+        character.position.y = room.rect.y + 8;
+
+        fakePlatform.setChannels(GUILD_A, []);
+        fakePlatform.emitChange(GUILD_A);
+        await server.waitForNextPatch();
+        await server.waitForNextPatch();
+
+        assert.ok(server.walkable.canStand(character.position.x, character.position.y));
+    });
+
+    it("bot 沒加進伺服器時，前端知道要顯示提示", async () => {
+        const { map } = await enter(GUILD_B);
+
+        assert.strictEqual(map().botMissing, true);
+        assert.deepStrictEqual(map().rooms, []);
     });
 });

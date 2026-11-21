@@ -1,15 +1,11 @@
-import { readFileSync } from "node:fs";
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
-import { createWalkable, SPEED, type TiledMap } from "../town/walkable.js";
+import { createWalkable, SPEED } from "../town/walkable.js";
+import { layoutTown, type TownLayout, type TownMapState } from "../town/layoutTown.js";
+import { platform } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
-
-// ponytail: 每座小鎮都用前端內建的預設地圖；#5（匯入地圖）改成讀各伺服器自己的地圖
-const DEFAULT_MAP: TiledMap = JSON.parse(
-  readFileSync(new URL("../../../client/public/maps/town.json", import.meta.url), "utf8"),
-);
 
 /**
  * 一次最多能累積多遠的移動額度（像素）。額度每秒回復 SPEED，用來吸收網路延遲造成的訊息擠在一起，
@@ -33,16 +29,20 @@ export class TownRoom extends Room<{
   metadata: { guildId: string }, // matchmaking filter, see app.config.ts
 }> {
   state = new TownState();
-  walkable = createWalkable(DEFAULT_MAP);
+  layout: TownLayout = layoutTown([]);
+  walkable = createWalkable(this.layout.map);
   ledger = new ChipLedger(database());
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
+  private stopWatchingChannels = () => {};
 
   static async onAuth(token: string, options: { guildId?: string }) {
     // 驗證失敗時 Colyseus 預設回 523，經 Cloudflare 會被換成它自己的錯誤頁、訊息消失，所以改回 401
-    const user = await JWT.verify<TownUser>(token).catch(() => {
-      throw new ServerError(401, "登入已失效，請重新打開親親小鎮");
+    const user = await JWT.verify<TownUser>(token).catch((e) => {
+      // 只有 token 本身壞掉或過期才算使用者的問題；JWT_SECRET 沒設之類的伺服器問題照原樣往外丟
+      if (isBadToken(e)) throw new ServerError(401, "登入已失效，請重新打開親親小鎮");
+      throw e;
     });
     // guildId 是前端傳來的，不可信；要跟登入時向 DC 驗證過、簽進 JWT 的一致
     if (options.guildId !== user.guildId) {
@@ -51,10 +51,37 @@ export class TownRoom extends Room<{
     return user;
   }
 
-  onCreate (options: any) {
+  async onCreate (options: { guildId: string }) {
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
     this.onMessage("checkIn", (client) => this.changeChips(client, (owner) => this.ledger.checkIn(owner), "簽到成功"));
     this.onMessage("claimRelief", (client) => this.changeChips(client, (owner) => this.ledger.claimRelief(owner), "領到救濟金"));
+
+    await this.refreshLayout(options.guildId);
+    this.stopWatchingChannels = platform().onChannelsChanged(options.guildId, () => this.refreshLayout(options.guildId));
+  }
+
+  /** 依目前的頻道清單重畫小鎮；站在新牆裡的角色送回廣場。 */
+  async refreshLayout(guildId: string) {
+    const channels = await platform().channels(guildId);
+    this.layout = layoutTown(channels ?? []);
+    this.walkable = createWalkable(this.layout.map);
+    const map: TownMapState = { ...this.layout, botMissing: channels === null };
+    this.state.map = JSON.stringify(map);
+
+    this.state.characters.forEach((character) => {
+      if (this.walkable.canStand(character.position.x, character.position.y)) return;
+      const spawn = this.spawnPoint();
+      character.position.x = spawn.x;
+      character.position.y = spawn.y;
+    });
+  }
+
+  /** 廣場出生點附近隨機一格，避免大家疊在同一點。 */
+  private spawnPoint() {
+    const { spawn, map } = this.layout;
+    const dx = (Math.floor(Math.random() * 5) - 2) * map.tilewidth;
+    const candidate = { x: spawn.x + dx, y: spawn.y };
+    return this.walkable.canStand(candidate.x, candidate.y) ? candidate : { ...spawn };
   }
 
   /** 前端算好的新位置。不合法就不採用，並把伺服器上的位置傳回去讓前端拉回來。 */
@@ -107,7 +134,7 @@ export class TownRoom extends Room<{
     console.log(client.sessionId, "joined!");
     this.state.characters.set(client.sessionId, new Character({
       name: client.auth.name,
-      position: new Vec2(this.walkable.randomSpawn()),
+      position: new Vec2(this.spawnPoint()),
       chips: this.ledger.welcome(chipOwnerOf(client)),
     }));
     this.moveMeters.set(client.sessionId, { budget: MAX_MOVE_BUDGET, at: this.clock.currentTime });
@@ -120,6 +147,7 @@ export class TownRoom extends Room<{
   }
 
   onDispose() {
+    this.stopWatchingChannels();
     console.log("room", this.roomId, "disposing...");
   }
 

@@ -5,3 +5,4 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .chip-hud button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .chip-hud button:focus-visible { outline: 2px solid #fff; }
 .chip-result.error { color: #ff8a80; }
+.bot-hint { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 8px 12px; border-radius: 4px; background: #b3261e; font: 14px sans-serif; }
