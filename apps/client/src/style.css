@@ -1,7 +1,7 @@
 html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden; }
 #app { width: 100vw; height: 100vh; }
 .notice { position: fixed; top: 0; left: 0; right: 0; z-index: 1; padding: 8px; text-align: center; background: #b3261e; }
-.chip-hud { position: fixed; top: 8px; left: 8px; display: flex; gap: 8px; align-items: center; font: 14px sans-serif; }
+.chip-hud { position: fixed; top: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font: 14px sans-serif; }
 .chip-hud button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .chip-hud button:focus-visible { outline: 2px solid #fff; }
 .chip-result.error { color: #ff8a80; }
@@ -9,6 +9,10 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .map-notice { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 8px 12px; border-radius: 4px; background: #b3261e; font: 14px sans-serif; }
 .toast { position: fixed; top: 48px; left: 50%; transform: translateX(-50%); padding: 8px 12px; border-radius: 4px; background: #1e6b3a; font: 14px sans-serif; }
 .toast.error { background: #b3261e; }
+.touch-stick { position: fixed; left: 24px; bottom: 24px; width: 112px; height: 112px; border-radius: 50%; background: #ffffff26; touch-action: none; display: grid; place-items: center; }
+.touch-stick > div { width: 48px; height: 48px; border-radius: 50%; background: #ffffff80; pointer-events: none; }
+.touch-buttons { position: fixed; right: 24px; bottom: 24px; display: flex; gap: 12px; touch-action: manipulation; }
+.touch-buttons button { width: 64px; height: 64px; border: 0; border-radius: 50%; background: #f2c94c; color: #222; font: 16px sans-serif; }
 .table-panel { position: fixed; right: 16px; top: 48px; width: min(280px, calc(100vw - 32px)); padding: 12px; border-radius: 6px; background: #1d2b22ee; font: 14px sans-serif; }
 .table-panel h2 { margin: 0 0 8px; font-size: 15px; }
 .table-panel ul { margin: 0 0 8px; padding-left: 18px; }
@@ -17,3 +21,4 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .table-actions button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .table-actions button:disabled { opacity: 0.5; cursor: default; }
 .table-actions button:focus-visible { outline: 2px solid #fff; }
+@media (pointer: coarse) { .key-hint { display: none; } }
