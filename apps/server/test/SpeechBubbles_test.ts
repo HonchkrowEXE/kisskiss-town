@@ -5,6 +5,7 @@ import type appConfig from "../src/app.config.js";
 import { testServer, fakePlatform } from "./testServer.js";
 import type { TownRoom } from "../src/rooms/TownRoom.js";
 import { BUBBLE_MAX } from "../src/rooms/features/SpeechBubbles.js";
+import { busiestChannel } from "../src/platform/discordPlatform.js";
 
 const GUILD_A = "9000000000000000001";
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -22,8 +23,9 @@ describe("頭上的對話框", () => {
         await server.waitForNextPatch();
         const bubbles: unknown[] = [];
         client.onMessage("bubble", (b: unknown) => bubbles.push(b));
-        return { bubbles };
+        return { bubbles, client };
     }
+    const enterWithClient = enter;
     const say = (channelId: string, content: string) =>
         fakePlatform.emitMessage(GUILD_A, channelId, { id: "m", author: "老王", authorId: "laowang", content, at: 1 });
 
@@ -32,6 +34,24 @@ describe("頭上的對話框", () => {
         say("c0", "大家晚安"); // c0 是語音房
         await wait(30);
         assert.deepStrictEqual(bubbles, [{ userId: "laowang", text: "大家晚安" }]);
+    });
+
+    it("有人開始、停止講話時，大家收到說話中的狀態", async () => {
+        const { client } = await enterWithClient();
+        const speaking: unknown[] = [];
+        client.onMessage("speaking", (s: unknown) => speaking.push(s));
+        fakePlatform.emitSpeaking(GUILD_A, "laowang", true);
+        fakePlatform.emitSpeaking(GUILD_A, "laowang", false);
+        await wait(30);
+        assert.deepStrictEqual(speaking, [{ userId: "laowang", speaking: true }, { userId: "laowang", speaking: false }]);
+    });
+
+    it("bot 要進人最多的公開語音頻道聽；人數一樣取 ID 小的；不算 bot 自己和私人頻道", () => {
+        const publicIds = new Set(["a", "b"]);
+        assert.strictEqual(busiestChannel([{ userId: "1", channelId: "a" }, { userId: "2", channelId: "b" }, { userId: "3", channelId: "b" }], publicIds), "b");
+        assert.strictEqual(busiestChannel([{ userId: "1", channelId: "b" }, { userId: "2", channelId: "a" }], publicIds), "a");
+        assert.strictEqual(busiestChannel([{ userId: "bot", channelId: "b" }, { userId: "1", channelId: "a" }], publicIds, "bot"), "a");
+        assert.strictEqual(busiestChannel([{ userId: "1", channelId: "secret" }, { userId: "2", channelId: null }], publicIds), undefined);
     });
 
     it("文字房的訊息、空訊息不出對話框；太長的截斷", async () => {
