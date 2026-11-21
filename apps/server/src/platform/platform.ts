@@ -19,6 +19,11 @@ export type Platform = {
     moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
     /** 在伺服器的通知頻道發一則純文字訊息（不 @ 任何人）；沒有能發的頻道就不發。暫時連不上時丟 PlatformUnavailable。 */
     announce(guildId: string, text: string, channelId?: string): Promise<void>;
+    /**
+     * 開一個只有這幾個人看得到的臨時語音頻道（一對一通話），回傳頻道 ID。大家都離開後平台會自動刪掉。
+     * bot 權限不夠時丟 MoveRefused；暫時連不上時丟 PlatformUnavailable。
+     */
+    createPrivateCall(guildId: string, userIds: string[], name: string): Promise<string>;
     /** 這位成員是不是管理員（有「管理伺服器」權限）。每次都問平台，不用快取。暫時連不上時丟 PlatformUnavailable。 */
     isAdmin(guildId: string, userId: string): Promise<boolean>;
     /**

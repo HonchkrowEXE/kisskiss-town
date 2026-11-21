@@ -109,6 +109,9 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             announce: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
+            createPrivateCall: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
             isAdmin: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
@@ -133,6 +136,14 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
         ],
         // 沒在快取裡的訊息被刪掉時也要收到刪除事件（只帶訊息 ID）
         partials: [Partials.Message],
+    });
+    /** bot 開的一對一通話頻道；大家都離開後刪掉。 */
+    const privateCalls = new Set<string>();
+    client.on(Events.VoiceStateUpdate, (old) => {
+        const channel = old.channel;
+        if (!channel || !privateCalls.has(channel.id) || channel.members.size > 0) return;
+        privateCalls.delete(channel.id);
+        channel.delete("一對一通話結束").catch((e) => console.warn("刪除一對一通話頻道失敗", e));
     });
     /** 每個文字頻道用來代替成員發言的 webhook（bot 自己建的那個）。 */
     const webhooks = new Map<string, Promise<Webhook>>();
@@ -282,6 +293,32 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             if (!channel || !me || !channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages])) return;
             // 名字是成員自己取的，跳脫 Markdown、不解析 @，避免變成格式或 @everyone
             await channel.send({ content: escapeMarkdown(text), allowedMentions: { parse: [] } });
+        },
+
+        async createPrivateCall(guildId, userIds, name) {
+            await waitReady();
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild || !client.user) throw new PlatformUnavailable("bot 不在這個伺服器");
+            const { ViewChannel, Connect, Speak, Stream, MoveMembers, ManageChannels } = PermissionFlagsBits;
+            try {
+                const channel = await guild.channels.create({
+                    name: name.slice(0, 100),
+                    type: ChannelType.GuildVoice,
+                    // 只有這幾個人（和 bot）看得到、進得去；@everyone 看不到，所以小鎮上也不會畫出這個頻道
+                    permissionOverwrites: [
+                        { id: guild.roles.everyone.id, deny: [ViewChannel, Connect] },
+                        ...userIds.map((id) => ({ id, allow: [ViewChannel, Connect, Speak, Stream] })),
+                        { id: client.user.id, allow: [ViewChannel, Connect, MoveMembers, ManageChannels] },
+                    ],
+                });
+                privateCalls.add(channel.id);
+                return channel.id;
+            } catch (e) {
+                if (codeOf(e) === 50013 || codeOf(e) === 50001) {
+                    throw new MoveRefused("bot 沒有「管理頻道」權限，沒辦法開一對一通話，請管理員給 bot 這個權限");
+                }
+                throw e;
+            }
         },
 
         async isAdmin(guildId, userId) {

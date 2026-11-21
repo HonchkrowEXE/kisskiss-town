@@ -31,6 +31,11 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .board-form input { font: inherit; padding: 4px 6px; border: 0; border-radius: 4px; }
 .furniture-result:empty { display: none; }
 .furniture-result.error { color: #ff8a80; }
+.call-menu { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 3; display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 6px; background: #1f2a44ee; font: 14px sans-serif; }
+.call-menu[hidden] { display: none; }
+.call-menu p { margin: 0; }
+.call-menu button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
+.call-menu button:disabled { opacity: 0.5; cursor: default; }
 .table-hint { color: #c8e6c9; font-size: 12px; }
 .table-form { display: flex; flex-direction: column; gap: 6px; }
 .table-form input { width: 4em; font: inherit; }

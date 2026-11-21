@@ -80,6 +80,17 @@ export class CharacterLayer {
         return found;
     }
 
+    /** 點到哪個人（打開小鎮的人，不含自己）；沒點到是 undefined。 */
+    sessionAt(x: number, y: number): string | undefined {
+        for (const [sessionId, view] of this.characters) {
+            if (sessionId === this.room.sessionId) continue;
+            const { x: sx, y: sy } = view.sprite;
+            // 角色圖 16×16、原點在腳底上方：點到身體或頭都算
+            if (Math.abs(x - sx) <= 8 && y >= sy - 14 && y <= sy + 4) return sessionId;
+        }
+        return undefined;
+    }
+
     /** 面向和走了多久 → 角色圖的第幾格。停著是站姿，走路時左右腳輪流。 */
     private frameOf(dir: string, walking: number) {
         const step = walking > 0 ? 1 + (Math.floor(walking / STEP_MS) % 2) : 0;

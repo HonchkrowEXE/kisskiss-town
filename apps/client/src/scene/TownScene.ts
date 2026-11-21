@@ -9,6 +9,7 @@ import { ObjectLayer } from "./ObjectLayer.js";
 import { PlayerController } from "./PlayerController.js";
 import { TableLayer } from "./TableLayer.js";
 import type { EditorTool } from "../ui/FurnitureEditor.js";
+import { CallMenu } from "../ui/CallMenu.js";
 
 /** 畫面短邊要看得到地圖上多少像素（大約 16 格）。 */
 const VIEW_SIZE = 260;
@@ -36,11 +37,15 @@ export class TownScene extends Phaser.Scene {
     /** 家具編輯器現在選的工具；沒開編輯器是 null。由 FurnitureEditor 更新。 */
     private editor: { tool: EditorTool | null };
 
-    constructor(room: Room<any, TownState>, stick = { dx: 0, dy: 0 }, editor: { tool: EditorTool | null } = { tool: null }) {
+    /** 點身邊的人跳出的選單。 */
+    private callMenu: CallMenu;
+
+    constructor(room: Room<any, TownState>, stick = { dx: 0, dy: 0 }, editor: { tool: EditorTool | null } = { tool: null }, callMenu = new CallMenu(room)) {
         super("town");
         this.room = room;
         this.stick = stick;
         this.editor = editor;
+        this.callMenu = callMenu;
     }
 
     preload() {
@@ -72,11 +77,16 @@ export class TownScene extends Phaser.Scene {
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.editAt(pointer));
     }
 
-    /** 編輯器開著時點地圖：橡皮擦移除那格的家具，其他工具在那格放家具。 */
+    /**
+     * 點地圖：
+     * - 編輯器開著時，橡皮擦移除那格的家具，其他工具在那格放家具
+     * - 平常點到身邊的人，跳出角色選單（一對一通話）
+     */
     private editAt(pointer: Phaser.Input.Pointer) {
         const tool = this.editor.tool;
         const map = this.map.current?.map;
-        if (!tool || !map) return;
+        if (!tool) return this.pickCharacter(pointer);
+        if (!map) return;
         const x = Math.floor(pointer.worldX / map.tilewidth);
         const y = Math.floor(pointer.worldY / map.tileheight);
         if (tool === "remove") {
@@ -85,6 +95,14 @@ export class TownScene extends Phaser.Scene {
         } else {
             this.room.send("placeObject", { kind: tool, x, y });
         }
+    }
+
+    private pickCharacter(pointer: Phaser.Input.Pointer) {
+        const sessionId = this.characters.sessionAt(pointer.worldX, pointer.worldY);
+        const target = sessionId ? this.room.state.characters.get(sessionId) : undefined;
+        const me = this.player.me;
+        if (!sessionId || !target) return this.callMenu.close();
+        this.callMenu.open(sessionId, Math.hypot(target.position.x - me.x, target.position.y - me.y) <= CallMenu.RANGE);
     }
 
     /** 依畫面大小決定放大倍率：桌機大約跟以前一樣（短邊看到 260px），直式手機不會縮到看不清楚。 */
