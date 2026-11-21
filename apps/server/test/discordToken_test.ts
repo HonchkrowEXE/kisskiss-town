@@ -11,7 +11,11 @@ describe("/discord_token 路由", () => {
 
     before(async () => (colyseus = await testServer()));
     beforeEach(async () => colyseus.cleanup());
-    afterEach(() => (process.env.ALLOW_MOCK_LOGIN = original));
+    // 原本沒設時要刪掉；直接指定 undefined 會變成字串 "undefined"
+    afterEach(() => {
+        if (original === undefined) delete process.env.ALLOW_MOCK_LOGIN;
+        else process.env.ALLOW_MOCK_LOGIN = original;
+    });
 
     const post = (body: object) => colyseus.http.post("/discord_token", { body });
 
