@@ -1,4 +1,4 @@
-import type { Platform, VoiceMember } from "../src/platform/platform.js";
+import { MoveRefused, type Platform, type VoiceMember } from "../src/platform/platform.js";
 import type { TownChannel } from "../src/town/layoutTown.js";
 
 /** 測試用的平台：頻道清單由測試決定，也能手動觸發「頻道變動」。沒設定的伺服器當作 bot 沒加入。 */
@@ -7,6 +7,9 @@ export function createFakePlatform() {
     const listeners = new Map<string, Set<() => void>>();
     const voice = new Map<string, VoiceMember[]>();
     const voiceListeners = new Map<string, Set<() => void>>();
+    /** 收到的搬人要求，給測試檢查。 */
+    const moves: { guildId: string; userId: string; channelId: string }[] = [];
+    let refuseMoves = false;
 
     const platform: Platform = {
         async channels(guildId) {
@@ -25,10 +28,24 @@ export function createFakePlatform() {
             voiceListeners.get(guildId)!.add(listener);
             return () => voiceListeners.get(guildId)!.delete(listener);
         },
+        async moveToVoice(guildId, userId, channelId) {
+            moves.push({ guildId, userId, channelId });
+            if (refuseMoves) throw new MoveRefused("bot 沒有權限把你搬過去");
+            const member = voice.get(guildId)?.find((m) => m.userId === userId);
+            if (!member) return "not-in-voice";
+            if (member.channelId === channelId) return "already-there";
+            member.channelId = channelId;
+            return "moved";
+        },
     };
 
     return {
         platform,
+        moves,
+        /** 之後的搬人要求都當作 bot 權限不夠。 */
+        setRefuseMoves(value: boolean) {
+            refuseMoves = value;
+        },
         setChannels(guildId: string, list: TownChannel[] | null) {
             if (list) channels.set(guildId, list);
             else channels.delete(guildId);

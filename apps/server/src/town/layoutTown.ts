@@ -99,3 +99,8 @@ export function layoutTown(channels: TownChannel[]): TownLayout {
 
     return { map, rooms, spawn };
 }
+
+/** 腳底在 (x, y) 時站在哪個房間裡；在廣場或走廊就是 undefined。 */
+export function roomAt(rooms: ChannelRoom[], x: number, y: number): ChannelRoom | undefined {
+    return rooms.find((r) => x >= r.rect.x && x < r.rect.x + r.rect.width && y >= r.rect.y && y < r.rect.y + r.rect.height);
+}

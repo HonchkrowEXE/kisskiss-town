@@ -12,7 +12,15 @@ export type Platform = {
     voiceMembers(guildId: string): Promise<VoiceMember[]>;
     /** 有人加入、離開、換語音頻道，或靜音、拒聽、直播狀態改變時呼叫 listener。回傳取消訂閱的函式。 */
     onVoiceChanged(guildId: string, listener: () => void): () => void;
+    /**
+     * 把成員搬到某個語音頻道。成員不在任何語音頻道時回傳 "not-in-voice"（平台不能把人拉進語音）。
+     * bot 權限不夠時丟 MoveRefused；暫時連不上時丟 PlatformUnavailable。
+     */
+    moveToVoice(guildId: string, userId: string, channelId: string): Promise<"moved" | "already-there" | "not-in-voice">;
 };
+
+/** 平台拒絕搬人，例如 bot 缺少「移動成員」或「連接」權限。訊息可以直接顯示給成員看。 */
+export class MoveRefused extends Error {}
 
 /** 在語音頻道裡的一位成員。 */
 export type VoiceMember = {
