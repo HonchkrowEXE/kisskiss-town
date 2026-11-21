@@ -4,7 +4,8 @@ import { ChipLedger } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { platform, PlatformUnavailable } from "../platform/platform.js";
 import { layoutTown, roomAt, type ChannelRoom, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
-import { TownSettings } from "../town/TownSettings.js";
+import { TownSettings, onCustomMapChanged } from "../town/TownSettings.js";
+import { importedLayout } from "../town/importMap.js";
 import { createWalkable, SPEED } from "../town/walkable.js";
 import { AdminSettings } from "./features/AdminSettings.js";
 import { Chips } from "./features/Chips.js";
@@ -92,10 +93,10 @@ export class TownRoom extends Room<{
       for (const [type, handler] of Object.entries(feature.messages())) this.onMessage(type, handler);
     }
 
-    // 先訂閱再讀，讀的這段時間裡發生的變動才不會漏掉
-    this.stopWatching = platform().onChannelsChanged(this.guildId, () =>
-      this.refreshLayout(this.guildId).catch((e) => console.error("更新小鎮地圖失敗", e)),
-    );
+    // 先訂閱再讀，讀的這段時間裡發生的變動才不會漏掉：頻道變動、管理員匯入或移除自訂地圖都要重畫
+    const refresh = () => this.refreshLayout(this.guildId).catch((e) => console.error("更新小鎮地圖失敗", e));
+    const stops = [platform().onChannelsChanged(this.guildId, refresh), onCustomMapChanged(this.guildId, refresh)];
+    this.stopWatching = () => stops.forEach((stop) => stop());
     await this.refreshLayout(this.guildId);
   }
 
@@ -116,7 +117,9 @@ export class TownRoom extends Room<{
     }
     if (version !== this.layoutVersion) return;
 
-    this.layout = layoutTown(channels);
+    // 管理員匯入過自訂地圖就用它（房間從地圖上的 area 物件來），不然照頻道清單自動長出來
+    const custom = this.townSettings.customMap(guildId);
+    this.layout = custom ? importedLayout(custom, channels) : layoutTown(channels);
     this.walkable = createWalkable(this.layout.map);
     const map: TownMapState = { ...this.layout, notice };
     this.state.map = JSON.stringify(map);

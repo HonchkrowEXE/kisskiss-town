@@ -27,7 +27,7 @@ try {
     new Toast(room);
     const hud = new ChipHud(room);
     new WardrobePanel(room, hud.element, colyseus.http);
-    new AdminControls(room, hud.element);
+    new AdminControls(room, hud.element, colyseus.http);
     new TablePanel(room);
     new TextPanel(room);
     const touch = new TouchControls(room);

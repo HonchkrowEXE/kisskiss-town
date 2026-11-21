@@ -1,5 +1,18 @@
+import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
+import type { StoredMap } from "./importMap.js";
 import type { TablePlacement } from "./tables.js";
+
+/** 自訂地圖換了（匯入或改回自動）時通知正在開的小鎮重畫。 */
+const mapEvents = new EventEmitter();
+
+/** 訂閱某座小鎮的地圖變動，回傳取消訂閱的函式。 */
+export function onCustomMapChanged(guildId: string, listener: () => void) {
+    mapEvents.on(guildId, listener);
+    return (): void => {
+        mapEvents.off(guildId, listener);
+    };
+}
 
 /** 每座小鎮由管理員決定的設定：搧巴掌通知發在哪個文字頻道、遊戲桌擺在哪。 */
 export class TownSettings {
@@ -13,7 +26,32 @@ export class TownSettings {
                 guild_id TEXT PRIMARY KEY,
                 tables_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS town_maps (
+                guild_id TEXT PRIMARY KEY,
+                map_json TEXT NOT NULL
+            );
         `);
+    }
+
+    /** 管理員匯入的自訂地圖；沒有是 undefined（用自動長出來的小鎮）。 */
+    customMap(guildId: string): StoredMap | undefined {
+        const row = this.db.prepare("SELECT map_json FROM town_maps WHERE guild_id = ?").get(guildId) as { map_json: string } | undefined;
+        return row ? (JSON.parse(row.map_json) as StoredMap) : undefined;
+    }
+
+    /** 存自訂地圖（給 undefined 改回自動），並通知正在開的小鎮重畫。 */
+    setCustomMap(guildId: string, map: StoredMap | undefined) {
+        if (map) {
+            this.db
+                .prepare(
+                    `INSERT INTO town_maps (guild_id, map_json) VALUES (?, ?)
+                     ON CONFLICT (guild_id) DO UPDATE SET map_json = excluded.map_json`,
+                )
+                .run(guildId, JSON.stringify(map));
+        } else {
+            this.db.prepare("DELETE FROM town_maps WHERE guild_id = ?").run(guildId);
+        }
+        mapEvents.emit(guildId);
     }
 
     /** 管理員擺好的遊戲桌；還沒擺過是 undefined（用預設的桌子）。 */
