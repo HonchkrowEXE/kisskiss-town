@@ -8,6 +8,8 @@ import { objectTexture } from "./objectArt.js";
 /** 地圖上的家具：照同步狀態畫出來；家具一變就通知（碰撞判斷要跟著改）。 */
 export class ObjectLayer {
     private images = new Map<string, Phaser.GameObjects.Image>();
+    /** 家具底下的淡影子，讓家具看起來放在地上。 */
+    private shadows = new Map<string, Phaser.GameObjects.Ellipse>();
     private room: Room<any, TownState>;
 
     /** onChange：家具清單變了（新增、移除）時呼叫。 */
@@ -17,12 +19,17 @@ export class ObjectLayer {
         callbacks.onAdd("objects", (o, id) => {
             if (!isObjectKind(o.kind)) return;
             const image = scene.add.image(o.x * 16, o.y * 16, objectTexture(scene, o.kind)).setOrigin(0, 0).setDepth(DEPTH.object);
+            const { width, height } = OBJECT_KINDS[o.kind];
+            const shadow = scene.add.ellipse(o.x * 16 + width * 8, (o.y + height) * 16 - 1, width * 14, 4, 0x000000, 0.22).setDepth(DEPTH.object - 0.5);
             this.images.set(id, image);
+            this.shadows.set(id, shadow);
             queueMicrotask(() => onChange(this.list()));
         });
         callbacks.onRemove("objects", (_o, id) => {
             this.images.get(id)?.destroy();
             this.images.delete(id);
+            this.shadows.get(id)?.destroy();
+            this.shadows.delete(id);
             queueMicrotask(() => onChange(this.list()));
         });
     }

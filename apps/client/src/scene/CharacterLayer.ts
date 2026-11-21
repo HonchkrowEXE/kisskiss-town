@@ -10,6 +10,8 @@ const STEP_MS = 150;
 
 type View = {
     sprite: Phaser.GameObjects.Sprite;
+    /** 腳底的淡影子。 */
+    shadow: Phaser.GameObjects.Ellipse;
     label: Phaser.GameObjects.Text;
     /** 目前用的外觀 JSON；變了就換一張角色圖。 */
     look: string;
@@ -63,6 +65,7 @@ export class CharacterLayer {
             if (character.look !== view.look) this.setLook(view, character.look);
             view.walking = moved ? view.walking + delta : 0;
             view.sprite.setPosition(x, y).setFrame(this.frameOf(isMe ? me.dir : character.dir, view.walking));
+            view.shadow.setPosition(x, y + 3);
             view.label.setPosition(x, y - LABEL_OFFSET).setText(character.name + dynamicsText(voice?.get(character.userId)));
         });
         return this.updateVoiceFigures();
@@ -110,6 +113,7 @@ export class CharacterLayer {
             let view = this.figures.get(userId);
             if (inTown.has(userId)) {
                 view?.sprite.setVisible(false);
+                view?.shadow.setVisible(false);
                 view?.label.setVisible(false);
                 return;
             }
@@ -118,6 +122,7 @@ export class CharacterLayer {
                 this.figures.set(userId, view);
             }
             view.sprite.setVisible(true).setPosition(figure.x, figure.y);
+            view.shadow.setVisible(true).setPosition(figure.x, figure.y + 3);
             view.label.setVisible(true).setPosition(figure.x, figure.y - LABEL_OFFSET).setText(figure.name + dynamicsText(figure));
         });
 
@@ -146,6 +151,7 @@ export class CharacterLayer {
         const texture = characterTexture(this.scene, look ? appearanceFromJson(look) : DEFAULT_APPEARANCE);
         return {
             sprite: this.scene.add.sprite(x, y, texture, 0).setOrigin(0.5, 0.75).setDepth(DEPTH.character),
+            shadow: this.scene.add.ellipse(x, y + 3, 10, 3, 0x000000, 0.25).setDepth(DEPTH.character - 0.5),
             label: this.scene.add
                 // 黑色描邊：在淺色地毯上也看得清楚
                 .text(x, y - LABEL_OFFSET, name, { fontSize, color: "#fff", resolution: 3, stroke: "#000", strokeThickness: 2 })
@@ -163,6 +169,7 @@ export class CharacterLayer {
 
     private destroy(view: View | undefined) {
         view?.sprite.destroy();
+        view?.shadow.destroy();
         view?.label.destroy();
     }
 }
