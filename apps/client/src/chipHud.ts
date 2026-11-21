@@ -9,7 +9,7 @@ export function mountChipHud(room: Room<any, TownState>) {
         <span class="chip-balance" role="status">籌碼 0</span>
         <button type="button" data-action="checkIn">簽到</button>
         <button type="button" data-action="claimRelief">領救濟金</button>
-        <label class="slappable"><input type="checkbox" checked> 可被搧（按 F 搧旁邊的人）</label>
+        <label class="slappable"><input type="checkbox" checked> 可被搧<span class="key-hint">（按 F 搧旁邊的人）</span></label>
         <span class="chip-result" role="status"></span>
     `;
     document.body.append(hud);

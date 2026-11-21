@@ -5,6 +5,7 @@ import { login } from "./login.js";
 import { TownScene } from "./TownScene.js";
 import { mountChipHud } from "./chipHud.js";
 import { mountTablePanel } from "./tablePanel.js";
+import { mountTouchControls } from "./touchControls.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 // 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
@@ -33,6 +34,7 @@ try {
 
     mountChipHud(room);
     mountTablePanel(room);
+    const stick = mountTouchControls(room);
 
 
     new Phaser.Game({
@@ -42,7 +44,7 @@ try {
         pixelArt: true, // 放大時不模糊，保持像素感
         backgroundColor: "#000",
         scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-        scene: new TownScene(room),
+        scene: new TownScene(room, stick),
     });
 } catch (e) {
     console.error(e);

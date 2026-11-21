@@ -53,9 +53,13 @@ export class TownScene extends Phaser.Scene {
     private me = { x: 0, y: 0, dir: "down" as Direction };
     private lastSent = { x: 0, y: 0, dir: "down" as Direction, at: 0 };
 
-    constructor(room: Room<any, TownState>) {
+    /** 手機搖桿的方向（長度 0～1）；不是觸控螢幕時永遠是 0。 */
+    private stick: { dx: number; dy: number };
+
+    constructor(room: Room<any, TownState>, stick = { dx: 0, dy: 0 }) {
         super("town");
         this.room = room;
+        this.stick = stick;
     }
 
     preload() {
@@ -288,18 +292,20 @@ export class TownScene extends Phaser.Scene {
             this.lastSent = { ...this.me, at: time };
         }
         const k = this.keys;
-        const dx = Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown);
-        const dy = Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown);
+        let dx = Number(k.right.isDown || k.d.isDown) - Number(k.left.isDown || k.a.isDown) + this.stick.dx;
+        let dy = Number(k.down.isDown || k.s.isDown) - Number(k.up.isDown || k.w.isDown) + this.stick.dy;
+        // 斜走時不要比直走快；搖桿沒推到底時（長度小於 1）走得比較慢
+        const length = Math.hypot(dx, dy);
+        if (length > 1) [dx, dy] = [dx / length, dy / length];
 
-        if (dx || dy) {
-            // 斜走時不要比直走快
-            const step = (SPEED * Math.min(delta, MAX_STEP_MS)) / 1000 / Math.hypot(dx, dy);
+        if (length > 0) {
+            const step = (SPEED * Math.min(delta, MAX_STEP_MS)) / 1000;
             const nx = this.me.x + dx * step;
             const ny = this.me.y + dy * step;
             if (this.walkable.canStand(nx, this.me.y)) this.me.x = nx;
             if (this.walkable.canStand(this.me.x, ny)) this.me.y = ny;
-            // 面向以水平優先：斜走時看左右
-            this.me.dir = dx < 0 ? "left" : dx > 0 ? "right" : dy < 0 ? "up" : "down";
+            // 面向看哪個方向推得多；一樣多（鍵盤斜走）時看左右
+            this.me.dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "left" : "right") : dy < 0 ? "up" : "down";
         }
 
         const moved = this.me.x !== this.lastSent.x || this.me.y !== this.lastSent.y || this.me.dir !== this.lastSent.dir;
