@@ -919,6 +919,25 @@ describe("文字房", () => {
         assert.deepStrictEqual(await say("哈囉"), { ok: false, message: "bot 還讀不到訊息內容" });
     });
 
+    it("讀不到這個頻道的人（例如在 Discord 看不到）收不到即時訊息", async () => {
+        fakePlatform.setTextRefusal("你在 Discord 看不到這個頻道的訊息");
+        const { live, enter } = await standOutside(1);
+        await enter();
+
+        fakePlatform.emitMessage(GUILD_A, "c1", { id: "m3", author: "老王", content: "秘密", at: 3 });
+        await new Promise((r) => setTimeout(r, 50));
+        assert.deepStrictEqual(live, []);
+    });
+
+    it("語音頻道的文字聊天不會送給站在語音房裡的人", async () => {
+        const { live, enter } = await standOutside(0);
+        await enter();
+
+        fakePlatform.emitMessage(GUILD_A, "c0", { id: "m4", author: "老王", content: "語音聊天", at: 4 });
+        await new Promise((r) => setTimeout(r, 50));
+        assert.deepStrictEqual(live, []);
+    });
+
     it("走進語音房不會打開文字面板", async () => {
         const { panels, enter } = await standOutside(0);
         await enter();

@@ -47,7 +47,7 @@ export function createFakePlatform() {
         async announce(guildId, text) {
             announcements.push({ guildId, text });
         },
-        async recentMessages(_guildId, channelId) {
+        async recentMessages(_guildId, channelId, _userId) {
             if (textRefusal) throw new TextRefused(textRefusal);
             return messages.get(channelId) ?? [];
         },
