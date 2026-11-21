@@ -1,4 +1,4 @@
-import { Callbacks, type Room } from "@colyseus/sdk";
+import { Callbacks, type Client, type Room } from "@colyseus/sdk";
 import type { TownState } from "../../../server/src/rooms/schema/TownState.js";
 import {
     BOTTOM_STYLES, CLOTH_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, TOP_STYLES, appearanceFromJson, type Appearance,
@@ -39,8 +39,12 @@ export class WardrobePanel {
     private selects = new Map<keyof Appearance, HTMLSelectElement>();
     private result = document.createElement("p");
 
-    constructor(room: Room<any, TownState>, bar: HTMLElement) {
+    private http: Client["http"];
+
+    /** http：送照片用（在 Discord 裡會自動走 URL Mapping 代理，並帶上登入的 token）。 */
+    constructor(room: Room<any, TownState>, bar: HTMLElement, http: Client["http"]) {
         this.room = room;
+        this.http = http;
         bar.append(this.button("換裝", () => this.open()), this.button("製作名單", () => (this.credits.hidden = !this.credits.hidden)));
         this.buildPanel();
         this.buildCredits();
@@ -103,8 +107,55 @@ export class WardrobePanel {
             this.button("取消", () => (this.panel.hidden = true)),
         );
         this.result.className = "chip-result";
-        this.panel.append(Object.assign(document.createElement("h2"), { textContent: "換裝" }), this.preview, form, actions, this.result);
+        this.panel.append(Object.assign(document.createElement("h2"), { textContent: "換裝" }), this.preview, form, this.buildPhoto(), actions, this.result);
         document.body.append(this.panel);
+    }
+
+    /** 用照片生成：選照片前先告知會送到 Anthropic；結果填進上面的選單，成員可以再改再存檔。 */
+    private buildPhoto() {
+        const box = document.createElement("div");
+        box.className = "photo-look";
+        const notice = Object.assign(document.createElement("p"), {
+            textContent: "用照片生成：照片會送到 Anthropic 的 Claude 判斷髮型和衣服顏色，處理完不會存在親親小鎮的伺服器（Anthropic 依它的政策最多保留 30 天）。",
+        });
+        const label = Object.assign(document.createElement("label"), { textContent: "選一張照片 " });
+        const input = Object.assign(document.createElement("input"), { type: "file", accept: "image/jpeg,image/png,image/webp,image/gif" });
+        const status = Object.assign(document.createElement("p"), { className: "chip-result", role: "status" });
+        label.append(input);
+        box.append(notice, label, status);
+
+        input.addEventListener("change", async () => {
+            const file = input.files?.[0];
+            input.value = ""; // 同一張可以再選一次
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) return this.say(status, false, "照片太大了，請選 5 MB 以下的");
+            this.say(status, true, "判斷中…");
+            try {
+                const base64 = await this.readBase64(file);
+                const { data } = await this.http.post("/photo_look", { body: { mediaType: file.type, base64 } });
+                for (const [field, select] of this.selects) select.value = data.appearance[field];
+                this.drawPreview();
+                this.say(status, true, "依照片選好了，可以再調整，滿意就按存檔");
+            } catch (e) {
+                this.say(status, false, (e as { data?: { error?: string } }).data?.error ?? "暫時沒辦法用照片生成，請手動選部件");
+            }
+        });
+        return box;
+    }
+
+    private say(element: HTMLElement, ok: boolean, message: string) {
+        element.textContent = message;
+        element.classList.toggle("error", !ok);
+    }
+
+    /** 照片轉成 base64（不含 data: 開頭）。只在瀏覽器記憶體裡，不存起來。 */
+    private readBase64(file: File) {
+        return new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+        });
     }
 
     private buildCredits() {

@@ -15,6 +15,8 @@ html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: h
 .wardrobe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; margin-bottom: 8px; }
 .wardrobe-fields label { display: flex; flex-direction: column; gap: 2px; }
 .wardrobe-fields select { font: inherit; padding: 2px 4px; border-radius: 4px; }
+.photo-look { margin-bottom: 8px; padding: 8px; border-radius: 4px; background: #00000033; max-width: 320px; font-size: 13px; }
+.photo-look p { margin: 0 0 6px; }
 .wardrobe-panel button { font: inherit; padding: 4px 10px; border: 0; border-radius: 4px; background: #f2c94c; color: #222; cursor: pointer; }
 .table-hint { color: #c8e6c9; font-size: 12px; }
 .table-form { display: flex; flex-direction: column; gap: 6px; }
