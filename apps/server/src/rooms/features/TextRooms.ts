@@ -16,16 +16,21 @@ export class TextRooms extends TownFeature {
     private reading = new Map<string, string>();
     /** 每位成員上次發言的時間，key 是帳號 ID。 */
     private lastSayAt = new Map<string, number>();
-    private stopWatching: () => void;
+    private stopWatching: (() => void)[];
 
     constructor(town: Town) {
         super(town);
-        // 新訊息送給正在看那個頻道的人（讀得到才算；語音頻道的文字聊天不會送）
-        this.stopWatching = platform().onMessage(town.guildId, (channelId, message) => {
-            for (const [sessionId, reading] of this.reading) {
-                if (reading === channelId) this.town.clientOf(sessionId)?.send("textMessage", { channelId, message });
-            }
-        });
+        // 新訊息、被刪掉的訊息，送給正在看那個頻道的人（讀得到才算；語音頻道的文字聊天不會送）
+        this.stopWatching = [
+            platform().onMessage(town.guildId, (channelId, message) => this.sendToReaders(channelId, "textMessage", { channelId, message })),
+            platform().onMessageDeleted(town.guildId, (channelId, messageId) => this.sendToReaders(channelId, "textDeleted", { channelId, messageId })),
+        ];
+    }
+
+    private sendToReaders(channelId: string, type: string, message: unknown) {
+        for (const [sessionId, reading] of this.reading) {
+            if (reading === channelId) this.town.clientOf(sessionId)?.send(type, message);
+        }
     }
 
     messages(): Record<string, MessageHandler> {
@@ -44,7 +49,7 @@ export class TextRooms extends TownFeature {
     }
 
     dispose() {
-        this.stopWatching();
+        for (const stop of this.stopWatching) stop();
     }
 
     /** 把文字頻道最新的訊息送給剛走進文字房的人；讀不到時送原因，面板顯示說明而不是空白。 */

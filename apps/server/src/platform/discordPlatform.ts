@@ -1,4 +1,4 @@
-import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits, escapeMarkdown, type Message, type NewsChannel, type TextChannel, type Webhook } from "discord.js";
+import { ChannelType, Client, Events, GatewayIntentBits, Partials, PermissionFlagsBits, escapeMarkdown, type Message, type NewsChannel, type TextChannel, type Webhook } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
 import { MoveRefused, PlatformUnavailable, TextRefused, type Platform, type TownMessage, type VoiceMember } from "./platform.js";
 
@@ -115,6 +115,7 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
             onMessage: () => () => {},
+            onMessageDeleted: () => () => {},
             sendAs: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
@@ -129,6 +130,8 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             GatewayIntentBits.GuildMessages,
             ...(messageContent ? [GatewayIntentBits.MessageContent] : []),
         ],
+        // 沒在快取裡的訊息被刪掉時也要收到刪除事件（只帶訊息 ID）
+        partials: [Partials.Message],
     });
     /** 每個文字頻道用來代替成員發言的 webhook（bot 自己建的那個）。 */
     const webhooks = new Map<string, Promise<Webhook>>();
@@ -315,6 +318,12 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             const onCreate = (m: Message) => messageContent && m.guildId === guildId && listener(m.channelId, toTownMessage(m));
             client.on(Events.MessageCreate, onCreate);
             return () => client.off(Events.MessageCreate, onCreate);
+        },
+
+        onMessageDeleted(guildId, listener) {
+            const onDelete = (m: { guildId: string | null; channelId: string; id: string }) => m.guildId === guildId && listener(m.channelId, m.id);
+            client.on(Events.MessageDelete, onDelete);
+            return () => client.off(Events.MessageDelete, onDelete);
         },
 
         async sendAs(guildId, channelId, userId, name, text) {

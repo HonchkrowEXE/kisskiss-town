@@ -15,6 +15,7 @@ export function createFakePlatform() {
     const admins = new Set<string>();
     const messages = new Map<string, TownMessage[]>(); // key 是頻道 ID
     const messageListeners = new Map<string, Set<(channelId: string, message: TownMessage) => void>>();
+    const deleteListeners = new Map<string, Set<(channelId: string, messageId: string) => void>>();
     /** 用成員身分發出的訊息，給測試檢查。 */
     const sent: { guildId: string; channelId: string; userId: string; name: string; text: string }[] = [];
     let textRefusal: string | undefined;
@@ -61,6 +62,11 @@ export function createFakePlatform() {
             messageListeners.get(guildId)!.add(listener);
             return () => messageListeners.get(guildId)!.delete(listener);
         },
+        onMessageDeleted(guildId, listener) {
+            if (!deleteListeners.has(guildId)) deleteListeners.set(guildId, new Set());
+            deleteListeners.get(guildId)!.add(listener);
+            return () => deleteListeners.get(guildId)!.delete(listener);
+        },
         async sendAs(guildId, channelId, userId, name, text) {
             if (textRefusal) throw new TextRefused(textRefusal);
             sent.push({ guildId, channelId, userId, name, text });
@@ -83,6 +89,10 @@ export function createFakePlatform() {
         /** 模擬 Discord 送來新訊息的事件。 */
         emitMessage(guildId: string, channelId: string, message: TownMessage) {
             for (const listener of messageListeners.get(guildId) ?? []) listener(channelId, message);
+        },
+        /** 模擬 Discord 送來訊息被刪除的事件。 */
+        emitMessageDeleted(guildId: string, channelId: string, messageId: string) {
+            for (const listener of deleteListeners.get(guildId) ?? []) listener(channelId, messageId);
         },
         /** 之後的搬人要求都當作 bot 權限不夠。 */
         setRefuseMoves(value: boolean) {

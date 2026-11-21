@@ -919,6 +919,18 @@ describe("文字房", () => {
         assert.deepStrictEqual(await say("哈囉"), { ok: false, message: "bot 還讀不到訊息內容" });
     });
 
+    it("Discord 上刪掉的訊息，正在看的人收到刪除通知", async () => {
+        const { enter, client } = await standOutside(1);
+        const deleted: unknown[] = [];
+        client.onMessage("textDeleted", (m: unknown) => deleted.push(m));
+        await enter();
+
+        fakePlatform.emitMessageDeleted(GUILD_A, "c1", "m1");
+        fakePlatform.emitMessageDeleted(GUILD_A, "c3", "m9"); // 別的頻道不送
+        await new Promise((r) => setTimeout(r, 50));
+        assert.deepStrictEqual(deleted, [{ channelId: "c1", messageId: "m1" }]);
+    });
+
     it("讀不到這個頻道的人（例如在 Discord 看不到）收不到即時訊息", async () => {
         fakePlatform.setTextRefusal("你在 Discord 看不到這個頻道的訊息");
         const { live, enter } = await standOutside(1);

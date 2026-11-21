@@ -28,6 +28,8 @@ export type Platform = {
     recentMessages(guildId: string, channelId: string, userId: string): Promise<TownMessage[]>;
     /** 這個伺服器的文字頻道有新訊息時呼叫 listener。讀不到訊息內容時不呼叫。回傳取消訂閱的函式。 */
     onMessage(guildId: string, listener: (channelId: string, message: TownMessage) => void): () => void;
+    /** 這個伺服器的文字頻道有訊息被刪掉時呼叫 listener（例如管理員刪掉洗版）。回傳取消訂閱的函式。 */
+    onMessageDeleted(guildId: string, listener: (channelId: string, messageId: string) => void): () => void;
     /**
      * 以成員的名字與頭像在文字頻道發言（不 @ 任何人）。遵守成員在 Discord 的限制：不能發言的頻道、禁言、慢速模式。
      * 發不出去時丟 TextRefused；暫時連不上時丟 PlatformUnavailable。
