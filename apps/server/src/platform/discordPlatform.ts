@@ -1,4 +1,5 @@
 import { ChannelType, Client, Events, GatewayIntentBits, Partials, PermissionFlagsBits, escapeMarkdown, type Message, type NewsChannel, type TextChannel, type Webhook } from "discord.js";
+import { joinVoiceChannel, type VoiceConnection } from "@discordjs/voice";
 import type { TownChannel } from "../town/layoutTown.js";
 import { MoveRefused, PlatformUnavailable, TextRefused, type Platform, type TownMessage, type VoiceMember } from "./platform.js";
 
@@ -91,7 +92,23 @@ const codeOf = (e: unknown) => (e as { code?: number }).code;
 /** bot 連上 Discord 最多等多久；連不上就當作暫時讀不到，不要讓進小鎮卡住。 */
 const READY_TIMEOUT_MS = 10_000;
 
-export function createDiscordPlatform(token: string | undefined, { messageContent = false } = {}): Platform {
+/**
+ * 人最多的公開語音頻道（不算 bot 自己），bot 要進去聽誰在講話；沒有人在語音裡是 undefined。
+ * 人數一樣時取頻道 ID 小的，結果才不會一直換。
+ */
+export function busiestChannel(states: { userId: string; channelId: string | null }[], publicIds: Set<string>, botId?: string) {
+    const counts = new Map<string, number>();
+    for (const s of states) {
+        if (s.channelId && s.userId !== botId && publicIds.has(s.channelId)) counts.set(s.channelId, (counts.get(s.channelId) ?? 0) + 1);
+    }
+    let best: string | undefined;
+    let most = 0;
+    for (const [id, count] of [...counts].sort(([a], [b]) => a.localeCompare(b))) if (count > most) [best, most] = [id, count];
+    return best;
+}
+
+/** voiceListen：讓 bot 進語音頻道聽誰在講話（「說話中」的氣泡）。要明確設定才開，因為 bot 會出現在語音頻道裡。 */
+export function createDiscordPlatform(token: string | undefined, { messageContent = false, voiceListen = false } = {}): Platform {
     if (!token) {
         console.warn("沒有設定 DISCORD_BOT_TOKEN：小鎮不會顯示頻道房間");
         return {
@@ -120,6 +137,7 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             },
             onMessage: () => () => {},
             onMessageDeleted: () => () => {},
+            onSpeaking: () => () => {},
             sendAs: async () => {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
@@ -137,6 +155,35 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
         // 沒在快取裡的訊息被刪掉時也要收到刪除事件（只帶訊息 ID）
         partials: [Partials.Message],
     });
+    /** 每個伺服器：誰在等「說話中」的消息、bot 現在進了哪個語音頻道聽。 */
+    const listening = new Map<string, { listeners: Set<(userId: string, speaking: boolean) => void>; connection?: VoiceConnection; channelId?: string }>();
+    /** 換到人最多的公開語音頻道聽；沒人在語音裡就離開。 */
+    function updateListening(guildId: string) {
+        const entry = listening.get(guildId);
+        const guild = client.guilds.cache.get(guildId);
+        if (!entry || !guild || !client.user) return;
+        const everyone = guild.roles.everyone;
+        const publicIds = new Set(
+            [...guild.channels.cache.values()]
+                .filter((c) => c.type === ChannelType.GuildVoice && c.permissionsFor(everyone)?.has(PermissionFlagsBits.ViewChannel))
+                .map((c) => c.id),
+        );
+        const states = [...guild.voiceStates.cache.values()].map((v) => ({ userId: v.id, channelId: v.channelId }));
+        const target = busiestChannel(states, publicIds, client.user.id);
+        if (target === entry.channelId) return;
+        entry.connection?.destroy();
+        entry.connection = undefined;
+        entry.channelId = target;
+        if (!target) return;
+        // 不能拒聽才收得到聲音；自己靜音，不會發出任何聲音
+        const connection = joinVoiceChannel({ channelId: target, guildId, adapterCreator: guild.voiceAdapterCreator, selfDeaf: false, selfMute: true });
+        connection.receiver.speaking.on("start", (userId) => entry.listeners.forEach((l) => l(userId, true)));
+        connection.receiver.speaking.on("end", (userId) => entry.listeners.forEach((l) => l(userId, false)));
+        connection.on("error", (e) => console.warn("聽語音的連線出錯", e));
+        entry.connection = connection;
+    }
+    if (voiceListen) client.on(Events.VoiceStateUpdate, (_old, state) => updateListening(state.guild.id));
+
     /** bot 開的一對一通話頻道；大家都離開後刪掉。 */
     const privateCalls = new Set<string>();
     client.on(Events.VoiceStateUpdate, (old) => {
@@ -356,6 +403,21 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             const onCreate = (m: Message) => messageContent && m.guildId === guildId && listener(m.channelId, toTownMessage(m));
             client.on(Events.MessageCreate, onCreate);
             return () => client.off(Events.MessageCreate, onCreate);
+        },
+
+        onSpeaking(guildId, listener) {
+            if (!voiceListen) return () => {};
+            let entry = listening.get(guildId);
+            if (!entry) listening.set(guildId, (entry = { listeners: new Set() }));
+            const mine = entry;
+            mine.listeners.add(listener);
+            waitReady().then(() => updateListening(guildId), () => {});
+            return () => {
+                mine.listeners.delete(listener);
+                if (mine.listeners.size) return;
+                mine.connection?.destroy(); // 沒有小鎮在聽了，bot 離開語音頻道
+                listening.delete(guildId);
+            };
         },
 
         onMessageDeleted(guildId, listener) {

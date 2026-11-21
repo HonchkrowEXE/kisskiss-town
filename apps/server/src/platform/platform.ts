@@ -33,6 +33,11 @@ export type Platform = {
     recentMessages(guildId: string, channelId: string, userId: string): Promise<TownMessage[]>;
     /** 這個伺服器的文字頻道有新訊息時呼叫 listener。讀不到訊息內容時不呼叫。回傳取消訂閱的函式。 */
     onMessage(guildId: string, listener: (channelId: string, message: TownMessage) => void): () => void;
+    /**
+     * 有人開始或停止講話時呼叫 listener。平台不支援、或沒打開時永遠不會呼叫。回傳取消訂閱的函式。
+     * Discord：bot 進到人最多的語音頻道聽（一個伺服器同時只能進一個），所以只有那個頻道有「說話中」。
+     */
+    onSpeaking(guildId: string, listener: (userId: string, speaking: boolean) => void): () => void;
     /** 這個伺服器的文字頻道有訊息被刪掉時呼叫 listener（例如管理員刪掉洗版）。回傳取消訂閱的函式。 */
     onMessageDeleted(guildId: string, listener: (channelId: string, messageId: string) => void): () => void;
     /**
@@ -72,6 +77,7 @@ let current: Platform | undefined;
 export function platform(): Platform {
     return (current ??= createDiscordPlatform(process.env.DISCORD_BOT_TOKEN, {
         messageContent: process.env.DISCORD_MESSAGE_CONTENT === "true",
+        voiceListen: process.env.DISCORD_VOICE_LISTEN === "true",
     }));
 }
 

@@ -18,6 +18,7 @@ export function createFakePlatform() {
     const messages = new Map<string, TownMessage[]>(); // key 是頻道 ID
     const messageListeners = new Map<string, Set<(channelId: string, message: TownMessage) => void>>();
     const deleteListeners = new Map<string, Set<(channelId: string, messageId: string) => void>>();
+    const speakingListeners = new Map<string, Set<(userId: string, speaking: boolean) => void>>();
     /** 用成員身分發出的訊息，給測試檢查。 */
     const sent: { guildId: string; channelId: string; userId: string; name: string; text: string }[] = [];
     let textRefusal: string | undefined;
@@ -70,6 +71,11 @@ export function createFakePlatform() {
             messageListeners.get(guildId)!.add(listener);
             return () => messageListeners.get(guildId)!.delete(listener);
         },
+        onSpeaking(guildId, listener) {
+            if (!speakingListeners.has(guildId)) speakingListeners.set(guildId, new Set());
+            speakingListeners.get(guildId)!.add(listener);
+            return () => speakingListeners.get(guildId)!.delete(listener);
+        },
         onMessageDeleted(guildId, listener) {
             if (!deleteListeners.has(guildId)) deleteListeners.set(guildId, new Set());
             deleteListeners.get(guildId)!.add(listener);
@@ -98,6 +104,10 @@ export function createFakePlatform() {
         /** 模擬 Discord 送來新訊息的事件。 */
         emitMessage(guildId: string, channelId: string, message: TownMessage) {
             for (const listener of messageListeners.get(guildId) ?? []) listener(channelId, message);
+        },
+        /** 模擬有人開始或停止講話。 */
+        emitSpeaking(guildId: string, userId: string, speaking: boolean) {
+            for (const listener of speakingListeners.get(guildId) ?? []) listener(userId, speaking);
         },
         /** 模擬 Discord 送來訊息被刪除的事件。 */
         emitMessageDeleted(guildId: string, channelId: string, messageId: string) {

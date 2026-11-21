@@ -25,6 +25,7 @@ export class BubbleLayer {
         this.scene = scene;
         this.positionOf = positionOf;
         room.onMessage("bubble", ({ userId, text }: { userId: string; text: string }) => this.say(userId, text, scene.time.now + BUBBLE_MS));
+        room.onMessage("speaking", ({ userId, speaking }: { userId: string; speaking: boolean }) => this.setSpeaking(userId, speaking));
     }
 
     /** 正在講話（顯示「…」）或停了。 */
