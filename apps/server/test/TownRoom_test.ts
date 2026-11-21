@@ -677,3 +677,141 @@ describe("搧巴掌", () => {
         assert.strictEqual(rejected.length, 1);
     });
 });
+
+describe("遊戲桌與骰子比大小", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => colyseus.cleanup());
+
+    let nextId = 3000;
+    async function enter(name: string, user = { id: `${nextId++}`, name, guildId: GUILD_A }) {
+        colyseus.sdk.auth.token = await JWT.sign(user);
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const results: { ok: boolean; message: string }[] = [];
+        client.onMessage("tableResult", (r: { ok: boolean; message: string }) => results.push(r));
+        const character = server.state.characters.get(client.sessionId);
+        /** 送出動作，回傳伺服器回的提示（沒有回就是 undefined）。 */
+        async function send(type: string) {
+            const before = results.length;
+            client.send(type);
+            await server.waitForMessage(type);
+            await server.waitForNextPatch();
+            return results.length > before ? results.at(-1) : undefined;
+        }
+        /** 站到第一張遊戲桌旁邊。 */
+        function walkToTable() {
+            const spot = server.layout.tables[0];
+            Object.assign(character.position, { x: spot.x, y: spot.y - 28 });
+        }
+        return { client, server, user, character, send, walkToTable, table: () => server.state.tables.get(server.layout.tables[0].id) };
+    }
+
+    async function seated(name: string) {
+        const p = await enter(name);
+        p.walkToTable();
+        assert.strictEqual((await p.send("sit"))?.ok, true);
+        return p;
+    }
+
+    it("走到桌旁入座：站到座位上，大家看得到誰坐哪；坐著不能走動", async () => {
+        const a = await seated("小明");
+        const spot = a.server.layout.tables[0];
+
+        assert.strictEqual(a.character.seatedAt, spot.id);
+        assert.deepStrictEqual([a.character.position.x, a.character.position.y], [spot.seats[0].x, spot.seats[0].y]);
+        assert.strictEqual(a.client.state.tables.get(spot.id).seats[0], a.client.sessionId);
+
+        a.client.send("move", { x: a.character.position.x, y: a.character.position.y + 4, dir: "down" });
+        await a.server.waitForMessage("move");
+        assert.strictEqual(a.character.position.y, spot.seats[0].y);
+    });
+
+    it("離桌子太遠不能入座", async () => {
+        const a = await enter("小明");
+        assert.deepStrictEqual(await a.send("sit"), { ok: false, message: "旁邊沒有遊戲桌" });
+    });
+
+    it("同一個帳號不能在兩個分頁都入座", async () => {
+        const a = await seated("小明");
+        const tab2 = await enter("小明", a.user);
+        tab2.walkToTable();
+        assert.deepStrictEqual(await tab2.send("sit"), { ok: false, message: "你已經在另一個分頁入座了" });
+    });
+
+    it("一個人下注不能擲骰", async () => {
+        const a = await seated("小明");
+        await a.send("bet");
+        assert.deepStrictEqual(await a.send("roll"), { ok: false, message: "至少要兩個人下注才能擲骰" });
+    });
+
+    it("兩人下注擲骰：伺服器擲骰、籌碼立刻更新、總數不變，結果大家看得到", async () => {
+        const a = await seated("小明");
+        const b = await seated("小華");
+        await a.send("bet");
+        await b.send("bet");
+        assert.strictEqual(a.table().bettors.length, 2);
+
+        await a.send("roll");
+
+        const chipsA = a.character.chips;
+        const chipsB = b.character.chips;
+        assert.strictEqual(chipsA + chipsB, 2000);
+        assert.ok([950, 1000, 1050].includes(chipsA), `${chipsA}`);
+        const result = JSON.parse(a.client.state.tables.get(a.server.layout.tables[0].id).result);
+        assert.deepStrictEqual(result.map((r: { name: string }) => r.name), ["小明", "小華"]);
+        assert.strictEqual(a.table().bettors.length, 0);
+        // 帳本也記了：每人一筆下注，贏的人再一筆結算
+        const historyA = a.server.ledger.history({ guildId: GUILD_A, userId: a.user.id });
+        assert.strictEqual(historyA.at(-1)!.balance, chipsA);
+    });
+
+    it("下注後籌碼在別處用掉了：擲骰時他退出這一局，沒有人被扣到一半", async () => {
+        const a = await seated("小明");
+        const b = await seated("小華");
+        await a.send("bet");
+        await b.send("bet");
+        a.server.ledger.change({ guildId: GUILD_A, userId: b.user.id }, -1000, "bet");
+
+        assert.deepStrictEqual(await a.send("roll"), { ok: false, message: "至少要兩個人下注才能擲骰" });
+        assert.deepStrictEqual([...a.table().bettors], [a.client.sessionId]);
+        assert.strictEqual(a.server.ledger.balance({ guildId: GUILD_A, userId: a.user.id }), 1000);
+    });
+
+    it("籌碼不夠不能下注", async () => {
+        const a = await seated("小明");
+        a.server.ledger.change({ guildId: GUILD_A, userId: a.user.id }, -980, "bet");
+        assert.deepStrictEqual(await a.send("bet"), { ok: false, message: "籌碼不夠，每局要 50" });
+    });
+
+    it("擲骰前有人斷線：他退出這一局、不扣籌碼，座位空出來", async () => {
+        const a = await seated("小明");
+        const b = await seated("小華");
+        await a.send("bet");
+        await b.send("bet");
+
+        await b.client.leave();
+        await a.server.waitForNextPatch();
+
+        assert.deepStrictEqual([...a.table().bettors], [a.client.sessionId]);
+        assert.strictEqual(a.table().seats.filter((s) => s !== "").length, 1);
+        assert.strictEqual(a.server.ledger.balance({ guildId: GUILD_A, userId: b.user.id }), 1000);
+    });
+
+    it("起身後可以走動", async () => {
+        const a = await seated("小明");
+        await a.send("stand");
+        const { x, y } = a.character.position;
+
+        a.client.send("move", { x, y: y - 4, dir: "up" });
+        await a.server.waitForMessage("move");
+        await new Promise((r) => setTimeout(r, 300)); // 等額度回復後再走一步
+        a.client.send("move", { x, y: y - 8, dir: "up" });
+        await a.server.waitForMessage("move");
+
+        assert.strictEqual(a.character.seatedAt, "");
+        assert.strictEqual(a.character.position.y, y - 8);
+    });
+});

@@ -107,6 +107,23 @@ describe("layoutTown", () => {
     });
 });
 
+describe("遊戲桌的位置", () => {
+    it("每個座位都站得住、在廣場上（不在房間裡），不管頻道多少", () => {
+        for (const n of [0, 8, 20]) {
+            const channels = Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `${i}`, kind: "voice" as const }));
+            const layout = layoutTown(channels);
+            const walkable = createWalkable(layout.map);
+            assert.ok(layout.tables.length > 0);
+            for (const table of layout.tables) {
+                for (const seat of table.seats) {
+                    assert.ok(walkable.canStand(seat.x, seat.y), `${n} 個頻道時 ${table.id} 的座位 ${JSON.stringify(seat)} 站不住`);
+                    assert.strictEqual(roomAt(layout.rooms, seat.x, seat.y), undefined);
+                }
+            }
+        }
+    });
+});
+
 describe("roomAt", () => {
     const layout = layoutTown(channels(5));
 
