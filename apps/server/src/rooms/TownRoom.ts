@@ -17,6 +17,7 @@ import { VoiceRooms } from "./features/VoiceRooms.js";
 import { Wardrobe } from "./features/Wardrobe.js";
 import { Furniture } from "./features/Furniture.js";
 import { SpeechBubbles } from "./features/SpeechBubbles.js";
+import { PrivateCalls } from "./features/PrivateCalls.js";
 import { DIRECTIONS, TownState, Character, Vec2 } from "./schema/TownState.js";
 import type { RoomChangeCause, Town } from "./Town.js";
 
@@ -90,6 +91,7 @@ export class TownRoom extends Room<{
       new GameTables(this),
       new TextRooms(this),
       new SpeechBubbles(this),
+      new PrivateCalls(this),
       this.voiceRooms,
       new AdminSettings(this),
     ];

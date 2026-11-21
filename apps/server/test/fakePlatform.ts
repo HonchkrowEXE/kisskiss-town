@@ -11,6 +11,8 @@ export function createFakePlatform() {
     const moves: { guildId: string; userId: string; channelId: string }[] = [];
     /** 發到通知頻道的訊息，給測試檢查。 */
     const announcements: { guildId: string; text: string; channelId?: string }[] = [];
+    /** 開過的一對一通話頻道，給測試檢查。 */
+    const calls: { guildId: string; userIds: string[]; name: string; channelId: string }[] = [];
     /** 當作管理員的帳號 ID，測試直接加。 */
     const admins = new Set<string>();
     const messages = new Map<string, TownMessage[]>(); // key 是頻道 ID
@@ -50,6 +52,12 @@ export function createFakePlatform() {
         async announce(guildId, text, channelId) {
             announcements.push({ guildId, text, ...(channelId && { channelId }) });
         },
+        async createPrivateCall(guildId, userIds, name) {
+            if (refuseMoves) throw new MoveRefused("bot 沒有「管理頻道」權限");
+            const channelId = `call-${calls.length + 1}`;
+            calls.push({ guildId, userIds, name, channelId });
+            return channelId;
+        },
         async isAdmin(_guildId, userId) {
             return admins.has(userId);
         },
@@ -78,6 +86,7 @@ export function createFakePlatform() {
         moves,
         announcements,
         admins,
+        calls,
         sent,
         /** 之後讀訊息、發言都當作被拒絕（例如沒打開 Message Content），原因是 reason；給 undefined 恢復。 */
         setTextRefusal(reason: string | undefined) {

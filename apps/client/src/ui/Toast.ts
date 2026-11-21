@@ -9,6 +9,7 @@ const TOAST_MESSAGES = [
     "slapResult", // 搧巴掌：命中、冷卻中、對方關掉了
     "tableResult", // 遊戲桌：入座、下注、籌碼不夠
     "wardrobeResult", // 換裝：換好了、部件不能選
+    "callResult", // 一對一通話：已邀請、對方不方便、開好了
 ];
 
 /** 畫面上方短暫顯示的提示，成功是綠色、失敗是紅色，4 秒後消失。 */

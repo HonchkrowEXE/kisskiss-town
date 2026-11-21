@@ -36,7 +36,7 @@ try {
     new TextPanel(room);
     const touch = new TouchControls(room);
 
-    new Phaser.Game({
+    const game = new Phaser.Game({
         parent: app,
         pixelArt: true, // 放大時不模糊，保持像素感
         backgroundColor: "#000",
@@ -44,6 +44,8 @@ try {
         scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
         scene: new TownScene(room, touch.stick, editor.state),
     });
+    // 開發時從 devtools（或自動化測試）拿得到鏡頭位置，算角色在畫面上的哪裡
+    if (import.meta.env.DEV) (window as any).game = game;
 } catch (e) {
     console.error(e);
     app.textContent = `進不了小鎮：${e instanceof Error ? `${e.name} ${(e as any).code ?? ""} ${e.message}` : JSON.stringify(e)}`;
