@@ -4,6 +4,7 @@ import { JWT } from "colyseus";
 import type appConfig from "../src/app.config.js";
 import { testServer } from "./testServer.js";
 import type { TownRoom } from "../src/rooms/TownRoom.js";
+import { createWalkable } from "../src/town/walkable.js";
 
 const GUILD_A = "9000000000000000001";
 const GUILD_B = "9000000000000000002";
@@ -46,7 +47,7 @@ describe("小鎮房間", () => {
         const a = await join(xiaoming);
         await colyseus.getRoomById(a.roomId).waitForNextPatch();
 
-        assert.strictEqual(a.state.players.get(a.sessionId).name, "鎮長小明");
+        assert.strictEqual(a.state.characters.get(a.sessionId).name, "鎮長小明");
     });
 
     it("一座小鎮可以超過 4 個人", async () => {
@@ -61,12 +62,12 @@ describe("小鎮房間", () => {
         const b = await join(xiaohua);
         const server = colyseus.getRoomById(a.roomId);
         await server.waitForNextPatch();
-        assert.ok(a.state.players.get(b.sessionId));
+        assert.ok(a.state.characters.get(b.sessionId));
 
         await b.leave();
         await server.waitForNextPatch();
 
-        assert.strictEqual(a.state.players.get(b.sessionId), undefined);
+        assert.strictEqual(a.state.characters.get(b.sessionId), undefined);
     });
 });
 
@@ -76,82 +77,106 @@ describe("走動", () => {
     before(async () => (colyseus = await testServer()));
     beforeEach(async () => colyseus.cleanup());
 
-    /** 進小鎮，並把角色放到 (24, 24)：預設地圖左上角第一格地板的中央，左邊和上面都是牆。 */
-    async function enterAtCorner() {
+    const AT_CORNER = { x: 24, y: 24, dir: "down" };
+
+    /** 進小鎮，記下伺服器傳回的每一次 moveRejected。 */
+    async function enter() {
         colyseus.sdk.auth.token = await JWT.sign({ id: "1", name: "小明", guildId: GUILD_A });
         const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
         const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
-        const player = server.state.players.get(client.sessionId);
-        player.position.x = 24;
-        player.position.y = 24;
-        return { client, server, player };
+        const character = server.state.characters.get(client.sessionId);
+        const rejections: unknown[] = [];
+        client.onMessage("moveRejected", (pos: unknown) => rejections.push(pos));
+
+        /** 送出移動，等伺服器處理完；被拒絕的話回傳伺服器拉回的位置與面向。 */
+        async function move(message: unknown) {
+            const before = rejections.length;
+            client.send("move", message);
+            await server.waitForMessage("move");
+            await server.waitForNextPatch(); // 讓 moveRejected 也有時間送回前端
+            return rejections.length > before ? rejections.at(-1) : undefined;
+        }
+        return { client, server, character, move };
     }
 
-    /** 送出移動，等伺服器處理完；有被拒絕的話回傳伺服器拉回的位置。 */
-    async function move(client: any, server: any, message: unknown) {
-        let rejected: { x: number; y: number } | undefined;
-        client.onMessage("moveRejected", (pos: { x: number; y: number }) => (rejected = pos));
-        client.send("move", message);
-        await server.waitForMessage("move");
-        await server.waitForNextPatch(); // 讓 moveRejected 也有時間送回前端
-        return rejected;
+    /** 進小鎮，並把角色放到 (24, 24)：預設地圖左上角第一格地板的中央，左邊和上面都是牆。 */
+    async function enterAtCorner() {
+        const room = await enter();
+        room.character.position.x = AT_CORNER.x;
+        room.character.position.y = AT_CORNER.y;
+        return room;
     }
 
     it("出生在可以站的地方", async () => {
-        colyseus.sdk.auth.token = await JWT.sign({ id: "1", name: "小明", guildId: GUILD_A });
-        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
-        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
-        const { x, y } = server.state.players.get(client.sessionId).position;
+        const { server, character } = await enter();
+        const { x, y } = character.position;
 
         assert.ok(server.walkable.canStand(x, y), `生在 (${x}, ${y})`);
     });
 
     it("合法的移動被採用，也記下面向", async () => {
-        const { client, server, player } = await enterAtCorner();
+        const { character, move } = await enterAtCorner();
 
-        const rejected = await move(client, server, { x: 28, y: 24, dir: "right" });
+        const rejected = await move({ x: 28, y: 24, dir: "right" });
 
         assert.strictEqual(rejected, undefined);
-        assert.deepStrictEqual([player.position.x, player.position.y, player.dir], [28, 24, "right"]);
+        assert.deepStrictEqual([character.position.x, character.position.y, character.dir], [28, 24, "right"]);
     });
 
-    it("走進牆裡被拒絕，前端收到原本的位置", async () => {
-        const { client, server, player } = await enterAtCorner();
+    it("走進牆裡被拒絕，前端收到原本的位置和面向", async () => {
+        const { character, move } = await enterAtCorner();
 
-        const rejected = await move(client, server, { x: 19, y: 24, dir: "left" });
+        const rejected = await move({ x: 19, y: 24, dir: "left" });
 
-        assert.deepStrictEqual(rejected, { x: 24, y: 24 });
-        assert.deepStrictEqual([player.position.x, player.position.y], [24, 24]);
+        assert.deepStrictEqual(rejected, AT_CORNER);
+        assert.deepStrictEqual([character.position.x, character.position.y], [24, 24]);
     });
 
     it("一次移動太遠（瞬移）被拒絕", async () => {
-        const { client, server, player } = await enterAtCorner();
+        const { character, move } = await enterAtCorner();
 
-        const rejected = await move(client, server, { x: 248, y: 200, dir: "right" });
+        const rejected = await move({ x: 248, y: 200, dir: "right" });
 
-        assert.deepStrictEqual(rejected, { x: 24, y: 24 });
-        assert.deepStrictEqual([player.position.x, player.position.y], [24, 24]);
+        assert.deepStrictEqual(rejected, AT_CORNER);
+        assert.deepStrictEqual([character.position.x, character.position.y], [24, 24]);
+    });
+
+    it("不能隔著一格厚的牆跳過去", async () => {
+        const { server, character, move } = await enterAtCorner();
+        // 換成中間有一道單格牆的小地圖：x 16~32 是牆，兩邊都是地板
+        //   地 牆 地
+        server.walkable = createWalkable({
+            width: 3, height: 1, tilewidth: 16, tileheight: 16,
+            layers: [{ type: "tilelayer", data: [1, 2, 1] }],
+            tilesets: [{ firstgid: 1, tiles: [{ id: 1, properties: [{ name: "collides", value: true }] }] }],
+        });
+        character.position.x = 8;
+        character.position.y = 8;
+
+        // 8 → 40 共 32px，沒超過移動額度，終點也站得住，但中間是牆
+        const rejected = await move({ x: 40, y: 8, dir: "right" });
+
+        assert.deepStrictEqual(rejected, { x: 8, y: 8, dir: "down" });
     });
 
     it("連發小步也不能超過速度上限", async () => {
-        const { client, server, player } = await enterAtCorner();
+        const { client, character } = await enterAtCorner();
 
         // 一口氣送 20 步、每步 4px（共 80px），遠超過累積的額度
         let x = 24;
-        client.onMessage("moveRejected", () => {});
         for (let i = 0; i < 20; i++) client.send("move", { x: (x += 4), y: 24, dir: "right" });
         await new Promise((r) => setTimeout(r, 200));
 
-        assert.ok(player.position.x < 24 + 80, `跑到了 x=${player.position.x}`);
+        assert.ok(character.position.x < 24 + 80, `跑到了 x=${character.position.x}`);
     });
 
     it("格式不對的訊息被拒絕", async () => {
-        const { client, server, player } = await enterAtCorner();
+        const { character, move } = await enterAtCorner();
 
         for (const bad of [{ x: "abc", y: 24, dir: "right" }, { x: 28, y: 24, dir: "fly" }, null]) {
-            const rejected = await move(client, server, bad);
-            assert.deepStrictEqual(rejected, { x: 24, y: 24 }, JSON.stringify(bad));
+            const rejected = await move(bad);
+            assert.deepStrictEqual(rejected, AT_CORNER, JSON.stringify(bad));
         }
-        assert.deepStrictEqual([player.position.x, player.position.y, player.dir], [24, 24, "down"]);
+        assert.deepStrictEqual([character.position.x, character.position.y, character.dir], [24, 24, "down"]);
     });
 });
