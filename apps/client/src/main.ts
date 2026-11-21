@@ -26,7 +26,7 @@ try {
     new ConnectionNotice(room);
     new Toast(room);
     const hud = new ChipHud(room);
-    new WardrobePanel(room, hud.element);
+    new WardrobePanel(room, hud.element, colyseus.http);
     new AdminControls(room, hud.element);
     new TablePanel(room);
     new TextPanel(room);
