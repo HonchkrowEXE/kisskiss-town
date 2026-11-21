@@ -446,3 +446,91 @@ describe("語音頻道裡的人站在房間裡", () => {
         assert.strictEqual(client.state.characters.get(client.sessionId).userId, "me");
     });
 });
+
+describe("走進語音房就搬頻道", () => {
+    let colyseus: ColyseusTestServer<typeof appConfig>;
+
+    before(async () => (colyseus = await testServer()));
+    beforeEach(async () => {
+        await colyseus.cleanup();
+        fakePlatform.moves.length = 0;
+    });
+    afterEach(() => {
+        fakePlatform.setVoice(GUILD_A, []);
+        fakePlatform.setRefuseMoves(false);
+    });
+
+    /** 進小鎮，站到某個房間門外的廣場或走廊上；回傳一個走進那個房間的函式。 */
+    async function standOutside(roomIndex: number) {
+        colyseus.sdk.auth.token = await JWT.sign({ id: "me", name: "小明", guildId: GUILD_A });
+        const client = await colyseus.sdk.joinOrCreate("town", { guildId: GUILD_A });
+        const server = colyseus.getRoomById(client.roomId) as unknown as TownRoom;
+        await server.waitForNextPatch();
+        const room = server.layout.rooms[roomIndex];
+        const character = server.state.characters.get(client.sessionId);
+        const doorX = room.rect.x + room.rect.width / 2;
+        character.position.x = doorX;
+        character.position.y = room.rect.y - 24; // 門外一格（牆的上面）
+        const results: { ok: boolean; message: string }[] = [];
+        client.onMessage("voiceMove", (r: { ok: boolean; message: string }) => results.push(r));
+
+        /** 往下走一步（每步 16px，不超過移動額度）。 */
+        async function stepDown() {
+            client.send("move", { x: doorX, y: character.position.y + 16, dir: "down" });
+            await server.waitForMessage("move");
+            // 等移動額度回復（每秒 80px），下一步才不會因為超速被拒絕
+            await new Promise((r) => setTimeout(r, 220));
+        }
+        return { client, server, room, results, enter: async () => { await stepDown(); await stepDown(); } , stepDown };
+    }
+
+    it("已經在語音裡的人走進語音房，會被搬到那個頻道", async () => {
+        fakePlatform.setVoice(GUILD_A, [{ userId: "me", name: "小明", channelId: "c2", muted: false, deafened: false, streaming: false }]);
+        const { room, results, enter } = await standOutside(0); // c0 是語音房
+
+        await enter();
+
+        assert.deepStrictEqual(fakePlatform.moves, [{ guildId: GUILD_A, userId: "me", channelId: room.id }]);
+        assert.deepStrictEqual(results.at(-1), { ok: true, message: `已切到語音頻道「${room.name}」` });
+    });
+
+    it("走進文字房不會搬", async () => {
+        fakePlatform.setVoice(GUILD_A, [{ userId: "me", name: "小明", channelId: "c0", muted: false, deafened: false, streaming: false }]);
+        const { enter } = await standOutside(1); // c1 是文字房
+
+        await enter();
+
+        assert.deepStrictEqual(fakePlatform.moves, []);
+    });
+
+    it("在同一個語音房裡走來走去，只搬一次", async () => {
+        fakePlatform.setVoice(GUILD_A, [{ userId: "me", name: "小明", channelId: "c2", muted: false, deafened: false, streaming: false }]);
+        const { server, client, enter, stepDown } = await standOutside(0);
+
+        await enter();
+        await stepDown();
+        const { y } = server.state.characters.get(client.sessionId).position;
+        assert.ok(y > server.layout.rooms[0].rect.y + 16, );
+
+        assert.strictEqual(fakePlatform.moves.length, 1);
+    });
+
+    it("不在任何語音頻道時，提示要先加入語音", async () => {
+        const { results, enter } = await standOutside(0);
+
+        await enter();
+
+        assert.strictEqual(results.at(-1)?.ok, false);
+        assert.match(results.at(-1)!.message, /先在 Discord 加入/);
+    });
+
+    it("bot 權限不夠時，成員看得到原因", async () => {
+        fakePlatform.setVoice(GUILD_A, [{ userId: "me", name: "小明", channelId: "c2", muted: false, deafened: false, streaming: false }]);
+        fakePlatform.setRefuseMoves(true);
+        const { results, enter } = await standOutside(0);
+
+        await enter();
+
+        assert.deepStrictEqual(results.at(-1), { ok: false, message: "bot 沒有權限把你搬過去" });
+    });
+});

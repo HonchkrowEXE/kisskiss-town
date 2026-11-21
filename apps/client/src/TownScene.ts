@@ -44,6 +44,8 @@ export class TownScene extends Phaser.Scene {
     private mapObjects: Phaser.GameObjects.GameObject[] = [];
     private tilemap?: Phaser.Tilemaps.Tilemap;
     /** 伺服器要提示成員的話（例如還讀不到頻道）。用網頁元素顯示：放在 Phaser 裡會跟著鏡頭放大 3 倍，跑出畫面。 */
+    /** 短暫顯示的提示，例如走進語音房後的結果。 */
+    private toast = Object.assign(document.body.appendChild(document.createElement("div")), { className: "toast", hidden: true, role: "status" });
     private notice = Object.assign(document.body.appendChild(document.createElement("div")), { className: "map-notice", hidden: true });
 
     /** 自己的位置由前端先走、伺服器驗證；不合法時伺服器會傳 moveRejected 拉回來。 */
@@ -99,6 +101,16 @@ export class TownScene extends Phaser.Scene {
             view?.sprite.destroy();
             view?.label.destroy();
             this.views.delete(sessionId);
+        });
+
+        // 走進語音房後伺服器回的結果（切過去了、要先加入語音、bot 權限不夠）
+        let toastTimer: ReturnType<typeof setTimeout> | undefined;
+        this.room.onMessage("voiceMove", ({ ok, message }: { ok: boolean; message: string }) => {
+            this.toast.textContent = message;
+            this.toast.classList.toggle("error", !ok);
+            this.toast.hidden = false;
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => (this.toast.hidden = true), 4000);
         });
 
         this.room.onMessage("moveRejected", (pos: { x: number; y: number; dir: Direction }) => {

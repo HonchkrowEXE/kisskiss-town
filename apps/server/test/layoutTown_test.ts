@@ -1,5 +1,5 @@
 import assert from "assert";
-import { layoutTown, TILE, type TownChannel } from "../src/town/layoutTown.js";
+import { layoutTown, roomAt, TILE, type TownChannel } from "../src/town/layoutTown.js";
 import { createWalkable } from "../src/town/walkable.js";
 
 const channel = (id: string, kind: "voice" | "text" = "voice"): TownChannel => ({ id, name: `頻道${id}`, kind });
@@ -104,5 +104,20 @@ describe("layoutTown", () => {
                 assert.ok(!overlap, `${i} 和 ${j} 重疊`);
             }
         }
+    });
+});
+
+describe("roomAt", () => {
+    const layout = layoutTown(channels(5));
+
+    it("站在房間裡回傳那個房間", () => {
+        const room = layout.rooms[3];
+        assert.strictEqual(roomAt(layout.rooms, room.rect.x + 1, room.rect.y + 1)?.id, room.id);
+    });
+
+    it("站在廣場或門口（還沒進房間）回傳 undefined", () => {
+        const room = layout.rooms[0];
+        assert.strictEqual(roomAt(layout.rooms, layout.spawn.x, layout.spawn.y), undefined);
+        assert.strictEqual(roomAt(layout.rooms, room.rect.x + room.rect.width / 2, room.rect.y - 8), undefined);
     });
 });

@@ -1,8 +1,8 @@
 import { Room, Client, CloseCode, JWT, ServerError } from "colyseus";
 import type { TownUser } from "../auth/discordLogin.js";
 import { createWalkable, SPEED } from "../town/walkable.js";
-import { layoutTown, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
-import { platform, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
+import { layoutTown, roomAt, type ChannelRoom, type TownChannel, type TownLayout, type TownMapState } from "../town/layoutTown.js";
+import { platform, MoveRefused, PlatformUnavailable, type VoiceMember } from "../platform/platform.js";
 import { ChipLedger, ChipError, type ChipOwner } from "../chips/ChipLedger.js";
 import { database } from "../db.js";
 import { DIRECTIONS, TownState, Character, Vec2, VoiceFigure } from "./schema/TownState.js";
@@ -36,6 +36,8 @@ export class TownRoom extends Room<{
 
   /** 每位成員剩下的移動額度（budget）與上次結算的時間（at），key 是 sessionId。 */
   private moveMeters = new Map<string, { budget: number; at: number }>();
+  /** 每位成員現在站在哪個房間（頻道 ID），走進新的語音房時才搬頻道。 */
+  private currentRoom = new Map<string, string | undefined>();
   private stopWatching: (() => void)[] = [];
   private layoutVersion = 0;
   private voiceVersion = 0;
@@ -162,6 +164,27 @@ export class TownRoom extends Room<{
     character.position.x = x;
     character.position.y = y;
     character.dir = dir;
+
+    const room = roomAt(this.layout.rooms, x, y);
+    if (room?.id === this.currentRoom.get(client.sessionId)) return;
+    this.currentRoom.set(client.sessionId, room?.id);
+    if (room?.kind === "voice") {
+      this.moveIntoVoice(client, room).catch((e) => console.error("搬語音頻道失敗", e));
+    }
+  }
+
+  /** 走進語音房：請平台把這位成員搬到那個語音頻道，結果告訴他。 */
+  private async moveIntoVoice(client: Client, room: ChannelRoom) {
+    const say = (ok: boolean, message: string) => client.send("voiceMove", { ok, message });
+    try {
+      const result = await platform().moveToVoice(client.auth.guildId, client.auth.id, room.id);
+      if (result === "moved") say(true, `已切到語音頻道「${room.name}」`);
+      if (result === "not-in-voice") say(false, "請先在 Discord 加入任一個語音頻道，走進語音房才能幫你切換");
+    } catch (e) {
+      if (e instanceof MoveRefused) say(false, e.message);
+      else if (e instanceof PlatformUnavailable) say(false, "暫時連不上 Discord，沒辦法切換語音頻道");
+      else throw e;
+    }
   }
 
   /**
@@ -197,6 +220,7 @@ export class TownRoom extends Room<{
     console.log(client.sessionId, "left!");
     this.state.characters.delete(client.sessionId);
     this.moveMeters.delete(client.sessionId);
+    this.currentRoom.delete(client.sessionId);
   }
 
   onDispose() {

@@ -1,6 +1,6 @@
 import { ChannelType, Client, Events, GatewayIntentBits, PermissionFlagsBits } from "discord.js";
 import type { TownChannel } from "../town/layoutTown.js";
-import { PlatformUnavailable, type Platform, type VoiceMember } from "./platform.js";
+import { MoveRefused, PlatformUnavailable, type Platform, type VoiceMember } from "./platform.js";
 
 /** 排序需要的頻道欄位，跟 discord.js 脫鉤，方便測試。 */
 export type RawChannel = TownChannel & {
@@ -76,6 +76,9 @@ export function createDiscordPlatform(token: string | undefined): Platform {
                 throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
             },
             onVoiceChanged: () => () => {},
+            moveToVoice: async () => {
+                throw new PlatformUnavailable("伺服器沒有設定 DISCORD_BOT_TOKEN");
+            },
         };
     }
 
@@ -163,6 +166,26 @@ export function createDiscordPlatform(token: string | undefined): Platform {
             const onVoice = (_old: unknown, state: { guild: { id: string } }) => state.guild.id === guildId && listener();
             client.on(Events.VoiceStateUpdate, onVoice);
             return () => client.off(Events.VoiceStateUpdate, onVoice);
+        },
+
+
+        async moveToVoice(guildId, userId, channelId) {
+            await waitReady();
+            const guild = client.guilds.cache.get(guildId);
+            if (!guild) throw new PlatformUnavailable("bot 不在這個伺服器");
+            const voice = guild.voiceStates.cache.get(userId);
+            if (!voice?.channelId) return "not-in-voice";
+            if (voice.channelId === channelId) return "already-there";
+            try {
+                await guild.members.edit(userId, { channel: channelId });
+                return "moved";
+            } catch (e) {
+                // 50013：bot 缺權限（移動成員，或目標頻道的連接、檢視頻道）
+                if ((e as { code?: number }).code === 50013) {
+                    throw new MoveRefused("bot 沒有權限把你搬過去，請管理員給 bot「移動成員」和這個頻道的「連接」權限");
+                }
+                throw e;
+            }
         },
     };
 }

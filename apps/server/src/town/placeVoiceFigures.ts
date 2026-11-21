@@ -7,7 +7,7 @@ import type { ChannelRoom } from "./layoutTown.js";
 export type VoiceSeat = { userId: string; channelId: string };
 
 const SLOT = 16; // 站位間距（像素）
-const TOP_GAP = 24; // 房間上方留給房名的空間
+const TOP_GAP = 32; // 房間上方留給房名和站位者名字的空間，兩個標籤才不會疊在一起
 
 /**
  * 把每位成員放進他所在語音頻道的房間，房間裡依 userId 排隊站好。
