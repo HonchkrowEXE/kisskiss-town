@@ -39,8 +39,8 @@ export class Furniture extends TownFeature {
         };
     }
 
-    /** 按 E：坐在椅子上就起身；旁邊有能互動的家具就用它。 */
-    interact(client: Client) {
+    /** 按 E：坐在椅子上就起身；旁邊有能互動的家具就用它。用滑鼠點的（targetId）只用那一件，太遠就說明。 */
+    interact(client: Client, targetId?: string) {
         const me = this.town.state.characters.get(client.sessionId);
         if (!me) return false;
         if (me.seatedAt.startsWith(CHAIR)) {
@@ -48,8 +48,12 @@ export class Furniture extends TownFeature {
             return true;
         }
         if (me.seatedAt) return false; // 坐在遊戲桌，交給遊戲桌
-        const target = this.nearest(me.position);
+        const target = targetId === undefined ? this.nearest(me.position) : this.objects.find((o) => o.id === targetId && OBJECT_KINDS[o.kind].interaction !== "none");
         if (!target) return false;
+        if (targetId !== undefined && !this.usable(client, target.id, target.kind)) {
+            client.send("tableResult", { ok: false, message: "離太遠了，走近一點" });
+            return true;
+        }
         const interaction = OBJECT_KINDS[target.kind].interaction;
         if (interaction === "sit") this.sit(client, target);
         else client.send("openObject", { id: target.id, kind: target.kind });

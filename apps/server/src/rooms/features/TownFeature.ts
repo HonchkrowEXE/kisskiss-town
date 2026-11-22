@@ -22,8 +22,11 @@ export abstract class TownFeature {
         return {};
     }
 
-    /** 成員按了互動鍵（E）。旁邊有這個功能能互動的東西就處理並回傳 true，沒有就回傳 false 讓下一個功能試。 */
-    interact(_client: Client): boolean {
+    /**
+     * 成員按了互動鍵（E），或用滑鼠點了某件東西（target 是它的 ID）。
+     * 旁邊有這個功能能互動的東西（或 target 是這個功能的東西）就處理並回傳 true，沒有就回傳 false 讓下一個功能試。
+     */
+    interact(_client: Client, _target?: string): boolean {
         return false;
     }
 

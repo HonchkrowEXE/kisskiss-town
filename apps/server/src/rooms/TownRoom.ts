@@ -97,9 +97,11 @@ export class TownRoom extends Room<{
     ];
 
     this.onMessage("move", (client, message: MoveMessage) => this.move(client, message));
-    // 按 E：依序問每個功能旁邊有沒有它能互動的東西（遊戲桌、椅子、電腦…），第一個接手的處理
-    this.onMessage("interact", (client) => {
-      if (!this.features.some((feature) => feature.interact(client))) {
+    // 按 E 或用滑鼠點：依序問每個功能旁邊有沒有它能互動的東西（遊戲桌、椅子、電腦…），第一個接手的處理
+    // 滑鼠點的會帶 target（點的那件東西的 ID），只用那一件
+    this.onMessage("interact", (client, payload?: { target?: unknown }) => {
+      const target = typeof payload?.target === "string" ? payload.target : undefined;
+      if (!this.features.some((feature) => feature.interact(client, target))) {
         client.send("tableResult", { ok: false, message: "旁邊沒有可以互動的東西" });
       }
     });

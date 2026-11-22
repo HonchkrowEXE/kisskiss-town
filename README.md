@@ -155,6 +155,7 @@ apps/client/src/
 │   ├── TownScene.ts         場景：把下面三個接起來
 │   ├── MapView.ts           地圖、房間名稱、遊戲桌、直播中標示
 │   ├── CharacterLayer.ts    所有人的角色、語音裡的人、搧巴掌動畫
+│   ├── InteractHint.ts      滑鼠移到椅子、電腦、電視、遊戲桌上的提示，點了走過去用它
 │   └── PlayerController.ts  鍵盤、搖桿、點地圖走路（找路在 town/path.ts），跟伺服器同步位置
 └── ui/                    浮在地圖上的網頁元素（每個一個類別，建構時接上房間）
 ```
