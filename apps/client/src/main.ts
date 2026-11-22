@@ -13,6 +13,7 @@ import { TouchControls } from "./ui/TouchControls.js";
 import { WardrobePanel } from "./ui/WardrobePanel.js";
 import { FurnitureEditor } from "./ui/FurnitureEditor.js";
 import { FurniturePanel } from "./ui/FurniturePanel.js";
+import { MapSetupPanel } from "./ui/MapSetupPanel.js";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 // 在 Discord 裡 SDK 會自己在網址前加 /.proxy/colyseus，所以只給網域
@@ -29,7 +30,8 @@ try {
     new Toast(room);
     const hud = new ChipHud(room);
     new WardrobePanel(room, hud.element, colyseus.http);
-    new AdminControls(room, hud.element, colyseus.http);
+    new AdminControls(room, hud.element);
+    new MapSetupPanel(room, hud.element, colyseus.http);
     const editor = new FurnitureEditor(room, hud.element);
     new FurniturePanel(room);
     new TablePanel(room);

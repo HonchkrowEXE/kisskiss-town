@@ -133,9 +133,9 @@ export class TownRoom extends Room<{
     }
     if (version !== this.layoutVersion) return;
 
-    // 管理員匯入過自訂地圖就用它（房間從地圖上的 area 物件來），不然照頻道清單自動長出來
+    // 管理員匯入過自訂地圖就用它（房間從地圖上的 area 物件來）；不然照頻道清單長出來，有 Claude 設計的規劃就照規劃排
     const custom = this.townSettings.customMap(guildId);
-    this.layout = custom ? importedLayout(custom, channels) : layoutTown(channels);
+    this.layout = custom ? importedLayout(custom, channels) : layoutTown(channels, this.townSettings.mapPlan(guildId) ?? undefined);
     this.baseWalkable = createWalkable(this.layout.map);
     this.walkable = this.baseWalkable; // 家具在 Furniture.onLayoutChanged 重擺後再加上
     const map: TownMapState = { ...this.layout, notice };

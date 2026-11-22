@@ -1,5 +1,5 @@
 import assert from "assert";
-import { layoutTown, roomAt, TILE, type TownChannel } from "../src/town/layoutTown.js";
+import { ROOM_SIZES, defaultPlan, layoutTown, roomAt, TILE, type TownChannel } from "../src/town/layoutTown.js";
 import { createWalkable } from "../src/town/walkable.js";
 import { TABLE_SPACING, canPlaceTable, defaultTables, seatsAround } from "../src/town/tables.js";
 
@@ -104,6 +104,47 @@ describe("layoutTown", () => {
                 const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
                 assert.ok(!overlap, `${i} 和 ${j} 重疊`);
             }
+        }
+    });
+});
+
+describe("分區與規劃", () => {
+    const withCategory = (id: string, category?: string): TownChannel => ({ ...channel(id), category });
+
+    it("預設照 Discord 分類分區，分區名稱寫在地圖上；沒分類的不寫", () => {
+        const input = [withCategory("a"), withCategory("b", "遊戲"), withCategory("c", "遊戲"), withCategory("d", "讀書")];
+        assert.deepStrictEqual(defaultPlan(input).districts.map((d) => [d.name, d.channels]), [["", ["a"]], ["遊戲", ["b", "c"]], ["讀書", ["d"]]]);
+        const layout = layoutTown(input);
+        assert.deepStrictEqual(layout.labels?.map((l) => l.text), ["遊戲", "讀書"]);
+        // 放得下時下一區接在同一排、隔一格；分區名稱在它第一間房上面
+        const room = (id: string) => layout.rooms.find((r) => r.id === id)!.rect;
+        assert.strictEqual(room("b").y, room("a").y);
+        assert.strictEqual(room("b").x - (room("a").x + room("a").width), 3 * 16, "兩面牆加一格空隙");
+        assert.strictEqual(layout.labels![0].x, room("b").x - 16);
+    });
+
+    it("規劃決定房間大小和地板；不在的頻道跳過，規劃沒提到的新頻道放到「其他」", () => {
+        const input = channels(3);
+        const layout = layoutTown(input, { districts: [{ name: "大廳", channels: ["2", "不存在"], size: "large", floor: "carpet" }] });
+        assert.deepStrictEqual(layout.rooms.map((r) => r.id), ["2", "0", "1"]);
+        const big = layout.rooms[0];
+        assert.deepStrictEqual([big.rect.width, big.rect.height], [(ROOM_SIZES.large[0] - 2) * 16, (ROOM_SIZES.large[1] - 2) * 16]);
+        const data = layout.map.layers[0].data!;
+        assert.strictEqual(data[(big.rect.y / 16) * layout.map.width + big.rect.x / 16], TILE.floor);
+        assert.deepStrictEqual(layout.labels?.map((l) => l.text), ["大廳", "其他"]);
+    });
+
+    it("大型伺服器（500 個頻道）：地圖不超過 200 格寬、40000 格以內，每個房間都走得到", () => {
+        const many = Array.from({ length: 500 }, (_, i) => ({ ...channel(`${i}`, i % 3 ? "text" : "voice"), category: `分類${Math.floor(i / 25)}` }));
+        const layout = layoutTown(many);
+        const { width, height, tilewidth } = layout.map;
+        assert.ok(width <= 200, `寬 ${width}`);
+        assert.ok(width * height <= 200 * 200 * 1.2, `${width} × ${height}`);
+        const seen = reachable(layout);
+        for (const room of layout.rooms) {
+            const cx = Math.floor((room.rect.x + room.rect.width / 2) / tilewidth);
+            const cy = Math.floor((room.rect.y + room.rect.height / 2) / tilewidth);
+            assert.ok(seen.has(cy * width + cx), `走不進 ${room.name}`);
         }
     });
 });

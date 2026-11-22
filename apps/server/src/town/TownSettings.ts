@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
 import type { StoredMap } from "./importMap.js";
+import type { TownPlan } from "./layoutTown.js";
 import type { TablePlacement } from "./tables.js";
 import type { BoardPost, TownObject } from "./objects.js";
 
@@ -26,6 +27,10 @@ export class TownSettings {
             CREATE TABLE IF NOT EXISTS town_tables (
                 guild_id TEXT PRIMARY KEY,
                 tables_json TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS town_map_plans (
+                guild_id TEXT PRIMARY KEY,
+                plan_json TEXT
             );
             CREATE TABLE IF NOT EXISTS town_maps (
                 guild_id TEXT PRIMARY KEY,
@@ -99,6 +104,30 @@ export class TownSettings {
         } else {
             this.db.prepare("DELETE FROM town_maps WHERE guild_id = ?").run(guildId);
         }
+        mapEvents.emit(guildId);
+    }
+
+    /**
+     * 管理員選的地圖規劃：
+     * - undefined：管理員還沒選過（新伺服器，先用照頻道自動產生的，管理員進來時跳出選地圖的畫面）
+     * - null：選了照頻道自動產生
+     * - TownPlan：Claude 設計的規劃
+     * 匯入的自訂地圖（customMap）優先於這個。
+     */
+    mapPlan(guildId: string): TownPlan | null | undefined {
+        const row = this.db.prepare("SELECT plan_json FROM town_map_plans WHERE guild_id = ?").get(guildId) as { plan_json: string | null } | undefined;
+        if (!row) return undefined;
+        return row.plan_json === null ? null : (JSON.parse(row.plan_json) as TownPlan);
+    }
+
+    /** 存地圖規劃（null 是照頻道自動產生），並通知正在開的小鎮重畫。 */
+    setMapPlan(guildId: string, plan: TownPlan | null) {
+        this.db
+            .prepare(
+                `INSERT INTO town_map_plans (guild_id, plan_json) VALUES (?, ?)
+                 ON CONFLICT (guild_id) DO UPDATE SET plan_json = excluded.plan_json`,
+            )
+            .run(guildId, plan ? JSON.stringify(plan) : null);
         mapEvents.emit(guildId);
     }
 
