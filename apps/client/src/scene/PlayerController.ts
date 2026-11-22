@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import type { Direction, TownState } from "../../../server/src/rooms/schema/TownState.js";
-import { SPEED, type Walkable } from "../../../server/src/town/walkable.js";
+import { findPath } from "../../../server/src/town/path.js";
+import { SPEED, type TiledMap, type Walkable } from "../../../server/src/town/walkable.js";
 
 /** 走動時多久送一次位置給伺服器（毫秒）。 */
 const SEND_INTERVAL = 50;
@@ -22,7 +23,7 @@ export const isTyping = () => {
 type Position = { x: number; y: number; dir: Direction };
 
 /**
- * 操作自己的角色：鍵盤（方向鍵、WASD）或手機搖桿走路，F 搧巴掌、E 入座／起身。
+ * 操作自己的角色：鍵盤（方向鍵、WASD）、手機搖桿或點地圖走路，F 搧巴掌、E 入座／起身。
  * 位置由前端先走、伺服器驗證；不合法時伺服器傳 moveRejected 拉回來。
  */
 export class PlayerController {
@@ -35,6 +36,8 @@ export class PlayerController {
     private room: Room<any, TownState>;
     /** 手機搖桿的方向（長度 0～1）；不是觸控螢幕時永遠是 0。 */
     private stick: { dx: number; dy: number };
+    /** 點地圖後還要經過的點；按鍵盤、搖桿或撞到東西就取消。 */
+    private path: { x: number; y: number }[] = [];
 
     constructor(scene: Phaser.Scene, room: Room<any, TownState>, stick: { dx: number; dy: number }) {
         this.scene = scene;
@@ -55,6 +58,11 @@ export class PlayerController {
         room.onMessage("slapped", (pos: Position) => this.jumpTo(pos));
     }
 
+    /** 點地圖：繞過牆走到那裡（點到桌子、牆就走到旁邊）；走不到就不動。 */
+    walkTo(target: { x: number; y: number }, walkable: Walkable | undefined, map: TiledMap | undefined) {
+        this.path = (walkable && map && findPath(walkable, map, this.me, target)) || [];
+    }
+
     /** 從伺服器上的角色開始（剛進小鎮時）。 */
     startAt(pos: Position) {
         Object.assign(this.me, pos);
@@ -70,16 +78,21 @@ export class PlayerController {
             this.me.x = mine.position.x;
             this.me.y = mine.position.y;
             this.lastSent = { ...this.me, at: time };
+            this.path = [];
             if (mine.seatedAt) return;
         }
 
-        const [dx, dy] = this.direction();
+        const step = (SPEED * Math.min(delta, MAX_STEP_MS)) / 1000;
+        let [dx, dy] = this.direction();
+        if (dx || dy) this.path = []; // 自己按方向就不照點的路走
+        else [dx, dy] = this.followPath(step);
         if (dx || dy) {
-            const step = (SPEED * Math.min(delta, MAX_STEP_MS)) / 1000;
             const nx = this.me.x + dx * step;
             const ny = this.me.y + dy * step;
+            const before = { x: this.me.x, y: this.me.y };
             if (walkable.canStand(nx, this.me.y)) this.me.x = nx;
             if (walkable.canStand(this.me.x, ny)) this.me.y = ny;
+            if (this.me.x === before.x && this.me.y === before.y) this.path = []; // 被擋住（例如有人放了家具）就停
             // 面向看哪個方向推得多；一樣多（鍵盤斜走）時看左右
             this.me.dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? "left" : "right") : dy < 0 ? "up" : "down";
         }
@@ -89,6 +102,19 @@ export class PlayerController {
             this.room.send("move", { x: this.me.x, y: this.me.y, dir: this.me.dir });
             this.lastSent = { ...this.me, at: time };
         }
+    }
+
+    /** 照點地圖的路走：朝下一個點，這一幀會走到就換下一個點；回傳這一幀的位移比例（不會走過頭）。 */
+    private followPath(step: number): [number, number] {
+        const next = this.path[0];
+        if (!next) return [0, 0];
+        const ddx = next.x - this.me.x;
+        const ddy = next.y - this.me.y;
+        const distance = Math.hypot(ddx, ddy);
+        if (distance <= step) this.path.shift();
+        if (distance === 0) return [0, 0];
+        const scale = Math.min(1, distance / step) / distance;
+        return [ddx * scale, ddy * scale];
     }
 
     /** 想走的方向（鍵盤加搖桿），長度最多 1：斜走不會比直走快，搖桿輕推走得比較慢。打字時不看鍵盤。 */
@@ -104,6 +130,7 @@ export class PlayerController {
 
     private jumpTo(pos: Position) {
         Object.assign(this.me, { x: pos.x, y: pos.y, dir: pos.dir });
+        this.path = [];
         this.lastSent = { ...this.me, at: this.scene.time.now };
     }
 
