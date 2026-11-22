@@ -101,6 +101,26 @@ describe("家具", () => {
         assert.strictEqual(a.server.state.objects.get(chairId)!.sittingBy, "");
     });
 
+    it("用滑鼠點的家具：兩張椅子中間時坐點的那張；點太遠的說明；點的不是家具交給遊戲桌", async () => {
+        const a = await enter();
+        const chairs = [...a.server.state.objects.entries()].filter(([, o]) => o.kind === "chair");
+        const [rightId, right] = chairs.find(([id]) => id.endsWith("chair-r"))!;
+        // 站在桌子正下方：離左右兩張椅子一樣遠
+        Object.assign(a.character.position, { x: (right.x - 1) * 16, y: (right.y + 1) * 16 + 8 });
+        await a.send("interact", { target: rightId });
+        assert.strictEqual(a.character.seatedAt, `chair:${rightId}`);
+        await a.send("interact", { target: rightId }); // 再點一次起身
+        assert.strictEqual(a.character.seatedAt, "");
+
+        const [farId] = chairs.find(([id]) => !id.startsWith(rightId.replace("chair-r", "")))!;
+        await a.send("interact", { target: farId });
+        assert.deepStrictEqual(a.log.tableResult.at(-1), { ok: false, message: "離太遠了，走近一點" });
+        assert.strictEqual(a.character.seatedAt, "");
+
+        await a.send("interact", { target: "不存在" });
+        assert.deepStrictEqual(a.log.tableResult.at(-1), { ok: false, message: "旁邊沒有可以互動的東西" });
+    });
+
     it("旁邊沒有東西時按 E 說明", async () => {
         const a = await enter();
         Object.assign(a.character.position, { x: a.server.layout.spawn.x, y: a.server.layout.spawn.y });

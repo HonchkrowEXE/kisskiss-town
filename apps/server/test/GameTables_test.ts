@@ -95,6 +95,16 @@ describe("遊戲桌", () => {
             assert.deepStrictEqual(await tab2.send("sit"), { ok: false, message: "你已經在另一個分頁入座了" });
         });
 
+        it("用滑鼠點遊戲桌：點的那張在旁邊就入座，太遠說明", async () => {
+            const a = await enter("小明");
+            const idOf = (game: GameKind) => [...a.server.state.tables.entries()].find(([, t]) => t.game === game)![0];
+            a.walkTo("dice");
+            assert.deepStrictEqual(await a.send("interact", { target: idOf("liar") }), { ok: false, message: "離太遠了，走近一點" });
+            assert.strictEqual(a.character.seatedAt, "");
+            await a.send("interact", { target: idOf("dice") });
+            assert.strictEqual(a.character.seatedAt, idOf("dice"));
+        });
+
         it("起身後可以走動；沒入座不能玩", async () => {
             const a = await seatedAt("dice", "小明");
             await a.send("stand");

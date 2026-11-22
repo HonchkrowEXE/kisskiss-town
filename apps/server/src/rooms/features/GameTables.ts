@@ -36,21 +36,33 @@ export class GameTables extends TownFeature {
         };
     }
 
-    /** 按 E：坐在遊戲桌就起身；旁邊有遊戲桌就入座；都不是就交給下一個功能。 */
-    interact(client: Client) {
+    /** 按 E：坐在遊戲桌就起身；旁邊有遊戲桌就入座；都不是就交給下一個功能。用滑鼠點的（targetId）只坐那一張。 */
+    interact(client: Client, targetId?: string) {
         const me = this.town.state.characters.get(client.sessionId);
         if (!me) return false;
         if (this.tables.has(me.seatedAt)) {
             this.stand(client.sessionId);
             return true;
         }
-        if (me.seatedAt || !this.nearestTable(me.position)) return false;
-        this.sit(client);
+        if (me.seatedAt) return false;
+        if (targetId === undefined) {
+            if (!this.nearestTable(me.position)) return false;
+        } else {
+            if (!this.tables.has(targetId)) return false;
+            if (!this.nearestTable(me.position, targetId)) {
+                client.send("tableResult", { ok: false, message: "離太遠了，走近一點" });
+                return true;
+            }
+        }
+        this.sit(client, targetId);
         return true;
     }
 
-    private nearestTable(position: { x: number; y: number }) {
-        return [...this.tables.values()].find((t) => Math.hypot(t.placement.x - position.x, t.placement.y - position.y) <= SIT_RANGE);
+    /** 範圍內的遊戲桌；給了 id 就只看那一張。 */
+    private nearestTable(position: { x: number; y: number }, id?: string) {
+        return [...this.tables.values()].find(
+            (t) => (id === undefined || t.placement.id === id) && Math.hypot(t.placement.x - position.x, t.placement.y - position.y) <= SIT_RANGE,
+        );
     }
 
     /** 斷線視為起身，由各遊戲決定怎麼處理這一局（退出、算停牌、算輸）。 */
@@ -66,7 +78,7 @@ export class GameTables extends TownFeature {
     // ── 入座與遊戲動作 ──────────────────────────────────────────
 
     /** 走到遊戲桌旁入座：站到空的座位上，坐著時不能走動。 */
-    private sit(client: Client) {
+    private sit(client: Client, tableId?: string) {
         const me = this.town.state.characters.get(client.sessionId);
         if (!me) return;
         const tell = (ok: boolean, message: string) => client.send("tableResult", { ok, message });
@@ -75,7 +87,7 @@ export class GameTables extends TownFeature {
         this.town.forEachCharacterOf(client.auth.id, (character) => (seatedElsewhere ||= character !== me && !!character.seatedAt));
         if (seatedElsewhere) return tell(false, "你已經在另一個分頁入座了");
 
-        const live = this.nearestTable(me.position);
+        const live = this.nearestTable(me.position, tableId);
         if (!live) return tell(false, "旁邊沒有遊戲桌");
         const table = this.town.state.tables.get(live.placement.id)!;
         const index = table.seats.indexOf("");

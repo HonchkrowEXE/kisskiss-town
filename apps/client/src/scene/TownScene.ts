@@ -4,6 +4,7 @@ import type { Direction, TownState } from "../../../server/src/rooms/schema/Town
 import { OBJECT_KINDS } from "../../../server/src/town/objects.js";
 import { BubbleLayer } from "./BubbleLayer.js";
 import { CharacterLayer } from "./CharacterLayer.js";
+import { InteractHint } from "./InteractHint.js";
 import { MapView } from "./MapView.js";
 import { ObjectLayer } from "./ObjectLayer.js";
 import { PlayerController } from "./PlayerController.js";
@@ -20,6 +21,7 @@ const VIEW_SIZE = 260;
  * - ObjectLayer：家具；TableLayer：遊戲桌
  * - CharacterLayer：畫面上的人
  * - PlayerController：操作自己的角色（點地圖空的地方就走過去）
+ * - InteractHint：滑鼠移到椅子、電腦、電視、遊戲桌上時的提示；點下去就走過去用它
  * 管理員打開家具編輯器時，點地圖的格子就放（或移除）家具。
  */
 export class TownScene extends Phaser.Scene {
@@ -28,6 +30,7 @@ export class TownScene extends Phaser.Scene {
     private characters!: CharacterLayer;
     private player!: PlayerController;
     private bubbles!: BubbleLayer;
+    private hint!: InteractHint;
     /** 編輯器開著時跟著滑鼠的虛線框，表示家具會放在哪。 */
     private cursor?: Phaser.GameObjects.Rectangle;
 
@@ -69,6 +72,7 @@ export class TownScene extends Phaser.Scene {
             this.cameras.main.startFollow(sprite, true);
         });
 
+        this.hint = new InteractHint(this, this.room);
         this.bubbles = new BubbleLayer(this, this.room, (userId) => this.characters.positionOf(userId));
 
         // 地圖由伺服器依頻道清單產生，頻道變動時整份換掉
@@ -80,7 +84,9 @@ export class TownScene extends Phaser.Scene {
     /**
      * 點地圖：
      * - 編輯器開著時，橡皮擦移除那格的家具，其他工具在那格放家具
-     * - 平常點到人，跳出角色選單（一對一通話）；點到其他地方，走過去
+     * - 平常點到人，跳出角色選單（一對一通話）
+ * - 點到椅子、電腦、電視、遊戲桌，走到旁邊再互動（跟按 E 一樣，但只用點的那一件）
+ * - 點到其他地方，走過去
      */
     private editAt(pointer: Phaser.Input.Pointer) {
         const tool = this.editor.tool;
@@ -103,7 +109,12 @@ export class TownScene extends Phaser.Scene {
         const me = this.player.me;
         if (!sessionId || !target) {
             this.callMenu.close();
-            return this.player.walkTo({ x: pointer.worldX, y: pointer.worldY }, this.map.walkable, this.map.current?.map);
+            const thing = this.hint.at(pointer.worldX, pointer.worldY);
+            if (!thing) return this.player.walkTo({ x: pointer.worldX, y: pointer.worldY }, this.map.walkable, this.map.current?.map);
+            const use = () => this.room.send("interact", { target: thing.id });
+            // 坐著的時候不能走：直接送（點自己坐的椅子、桌子就是起身）
+            if (this.room.state.characters.get(this.room.sessionId)?.seatedAt) return use();
+            return this.player.walkTo(thing.approach, this.map.walkable, this.map.current?.map, use);
         }
         this.callMenu.open(sessionId, Math.hypot(target.position.x - me.x, target.position.y - me.y) <= CallMenu.RANGE);
     }
@@ -119,6 +130,7 @@ export class TownScene extends Phaser.Scene {
         const streamingRooms = this.characters.update(delta, this.player.me);
         this.map.markStreaming(streamingRooms);
         this.bubbles.update(time);
+        this.hint.update(!this.editor.tool);
         this.updateCursor();
     }
 
