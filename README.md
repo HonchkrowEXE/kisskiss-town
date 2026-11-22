@@ -146,7 +146,7 @@ apps/server/src/
 │       └── AdminSettings.ts 管理員的設定
 ├── platform/              平台轉接層（ADR-0008）：遊戲邏輯只透過它碰 Discord
 ├── games/                 遊戲規則，純邏輯（輸入狀態和動作，輸出新狀態）
-├── town/                  地圖版面、碰撞、站位等純函式
+├── town/                  地圖版面、碰撞、找路、站位等純函式
 └── chips/                 籌碼帳本（ADR-0005）
 
 apps/client/src/
@@ -155,7 +155,7 @@ apps/client/src/
 │   ├── TownScene.ts         場景：把下面三個接起來
 │   ├── MapView.ts           地圖、房間名稱、遊戲桌、直播中標示
 │   ├── CharacterLayer.ts    所有人的角色、語音裡的人、搧巴掌動畫
-│   └── PlayerController.ts  鍵盤、搖桿走路，跟伺服器同步位置
+│   └── PlayerController.ts  鍵盤、搖桿、點地圖走路（找路在 town/path.ts），跟伺服器同步位置
 └── ui/                    浮在地圖上的網頁元素（每個一個類別，建構時接上房間）
 ```
 

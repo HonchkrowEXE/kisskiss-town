@@ -19,7 +19,7 @@ const VIEW_SIZE = 260;
  * - MapView：地圖、房間名稱
  * - ObjectLayer：家具；TableLayer：遊戲桌
  * - CharacterLayer：畫面上的人
- * - PlayerController：操作自己的角色
+ * - PlayerController：操作自己的角色（點地圖空的地方就走過去）
  * 管理員打開家具編輯器時，點地圖的格子就放（或移除）家具。
  */
 export class TownScene extends Phaser.Scene {
@@ -80,7 +80,7 @@ export class TownScene extends Phaser.Scene {
     /**
      * 點地圖：
      * - 編輯器開著時，橡皮擦移除那格的家具，其他工具在那格放家具
-     * - 平常點到身邊的人，跳出角色選單（一對一通話）
+     * - 平常點到人，跳出角色選單（一對一通話）；點到其他地方，走過去
      */
     private editAt(pointer: Phaser.Input.Pointer) {
         const tool = this.editor.tool;
@@ -101,7 +101,10 @@ export class TownScene extends Phaser.Scene {
         const sessionId = this.characters.sessionAt(pointer.worldX, pointer.worldY);
         const target = sessionId ? this.room.state.characters.get(sessionId) : undefined;
         const me = this.player.me;
-        if (!sessionId || !target) return this.callMenu.close();
+        if (!sessionId || !target) {
+            this.callMenu.close();
+            return this.player.walkTo({ x: pointer.worldX, y: pointer.worldY }, this.map.walkable, this.map.current?.map);
+        }
         this.callMenu.open(sessionId, Math.hypot(target.position.x - me.x, target.position.y - me.y) <= CallMenu.RANGE);
     }
 
