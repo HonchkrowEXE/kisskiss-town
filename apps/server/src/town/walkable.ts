@@ -20,6 +20,8 @@ export type TiledObject = {
     width?: number;
     height?: number;
     point?: boolean;
+    /** 文字物件（小鎮匯出時把分區名稱存成這個）。 */
+    text?: { text?: string; pixelsize?: number };
     properties?: TiledProperty[];
 };
 

@@ -6,6 +6,8 @@ import { testServer, fakePlatform } from "./testServer.js";
 import type { TownRoom } from "../src/rooms/TownRoom.js";
 import { MapImportError, importedLayout, validateImport } from "../src/town/importMap.js";
 import { createWalkable } from "../src/town/walkable.js";
+import { AUTO_TILESET_IMAGE, exportMap } from "../src/town/exportMap.js";
+import { layoutTown } from "../src/town/layoutTown.js";
 
 const GUILD_A = "9000000000000000001";
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
@@ -151,5 +153,31 @@ describe("/town_map 路由", () => {
     it("一般成員不能換地圖", async () => {
         const { post } = await enter();
         await assert.rejects(post({ reset: true }), (e: any) => e.statusCode === 403);
+    });
+});
+
+describe("匯出地圖", () => {
+    const channels = [
+        { id: "v1", name: "大廳", kind: "voice" as const, category: "聊天" },
+        { id: "t1", name: "公告", kind: "text" as const },
+    ];
+
+    it("自動產生的小鎮匯出後再匯入：房間、出生點、分區名稱、牆都一樣", () => {
+        const layout = layoutTown(channels);
+        const exported = exportMap(layout);
+        assert.deepStrictEqual(Object.keys(exported.images), [AUTO_TILESET_IMAGE]);
+        const back = importedLayout(validateImport(exported.map, { [AUTO_TILESET_IMAGE]: PNG }), channels);
+        assert.deepStrictEqual(back.rooms, layout.rooms);
+        assert.deepStrictEqual(back.spawn, layout.spawn);
+        assert.deepStrictEqual(back.labels, layout.labels);
+        const before = createWalkable(layout.map);
+        const after = createWalkable(back.map);
+        for (let y = 8; y < layout.map.height * 16; y += 16) for (let x = 8; x < layout.map.width * 16; x += 16) assert.strictEqual(after.canStand(x, y), before.canStand(x, y), `(${x}, ${y})`);
+    });
+
+    it("匯入的自訂地圖原封不動匯出，圖片一起帶走", () => {
+        const stored = validateImport(tiledSample(), { "town.png": PNG });
+        const exported = exportMap(importedLayout(stored, channels));
+        assert.deepStrictEqual(exported, { map: stored.map, images: stored.images });
     });
 });

@@ -10,7 +10,7 @@
 
 | 功能 | 說明 |
 |---|---|
-| 🗺️ 小鎮地圖 | 管理員用 [tilemap.dev](https://tilemap.dev/) 或 [Tiled](https://www.mapeditor.org/) 畫地圖、匯入，在小鎮裡框房間、綁定頻道、放物件 |
+| 🗺️ 小鎮地圖 | 新伺服器一進來就有照頻道自動產生的地圖（依分類分區，大型伺服器也放得下）；管理員可以請 Claude 照一段描述重新設計、用 [Tiled](https://www.mapeditor.org/) 或 [tilemap.dev](https://tilemap.dev/) 自己畫來匯入，或把目前的地圖匯出去改 |
 | 🚪 房間 = 頻道 | 走進語音房，bot 就把你搬到對應的語音頻道；走進文字房，畫面旁會顯示訊息，也能直接回覆 |
 | 🧍 角色 | 上傳照片，AI 判斷髮型、髮色、膚色、衣服等特徵，自動用像素部件組出你的角色，四個方向都有走路動畫 |
 | 🔴 動態 | 角色頭上顯示誰正在說話、誰在直播，點一下就能過去 |
@@ -146,7 +146,7 @@ apps/server/src/
 │       └── AdminSettings.ts 管理員的設定
 ├── platform/              平台轉接層（ADR-0008）：遊戲邏輯只透過它碰 Discord
 ├── games/                 遊戲規則，純邏輯（輸入狀態和動作，輸出新狀態）
-├── town/                  地圖版面、碰撞、找路、站位等純函式
+├── town/                  地圖版面（layoutTown 照頻道和規劃排房間）、匯入／匯出、Claude 設計（planTown）、碰撞、找路等
 └── chips/                 籌碼帳本（ADR-0005）
 
 apps/client/src/
@@ -157,7 +157,7 @@ apps/client/src/
 │   ├── CharacterLayer.ts    所有人的角色、語音裡的人、搧巴掌動畫
 │   ├── InteractHint.ts      滑鼠移到椅子、電腦、電視、遊戲桌上的提示，點了走過去用它
 │   └── PlayerController.ts  鍵盤、搖桿、點地圖走路（找路在 town/path.ts），跟伺服器同步位置
-└── ui/                    浮在地圖上的網頁元素（每個一個類別，建構時接上房間）
+└── ui/                    浮在地圖上的網頁元素（每個一個類別，建構時接上房間；選地圖是 MapSetupPanel）
 ```
 
 伺服器回給前端的「結果」訊息（例如 `slapResult`）要顯示成畫面上方的提示的話，加進 `ui/Toast.ts` 的清單。

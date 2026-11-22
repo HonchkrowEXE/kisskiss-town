@@ -22,7 +22,7 @@ export class FurnitureEditor {
 
     private mount(bar: HTMLElement) {
         const toggle = Object.assign(document.createElement("button"), { type: "button", textContent: "編輯家具" });
-        toggle.addEventListener("click", () => this.setOpen(this.panel.hidden));
+        toggle.addEventListener("click", () => this.setOpen(this.panel.hidden === true));
         bar.append(toggle);
 
         this.panel.className = "furniture-editor";

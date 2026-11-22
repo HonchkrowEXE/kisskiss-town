@@ -30,6 +30,10 @@ describe("orderChannels", () => {
     it("輸出只留小鎮需要的欄位", () => {
         assert.deepStrictEqual(orderChannels([ch("a", "text", 0, null)]), [{ id: "a", name: "a", kind: "text" }]);
     });
+
+    it("有分類的頻道帶著分類名稱（小鎮上的分區名稱）", () => {
+        assert.deepStrictEqual(orderChannels([{ ...ch("a", "voice", 0, 1), category: "遊戲" }]), [{ id: "a", name: "a", kind: "voice", category: "遊戲" }]);
+    });
 });
 
 describe("toVoiceMembers", () => {

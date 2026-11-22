@@ -67,6 +67,7 @@ const objects = (map: TiledMap) => map.layers.flatMap((l: TiledLayer) => (l.type
  * 自訂地圖變成小鎮的版面：
  * - 房間：class（或 type）是 area、有 channel 屬性（頻道 ID 或名稱）的矩形物件；頻道不在清單裡（例如私人頻道）就不算
  * - 出生點：Spawn Points 群組裡的物件，或名稱、class 是 spawn 的物件；都沒有就用地圖中央
+ * - 地圖上的文字（分區名稱）：Tiled 的文字物件
  */
 export function importedLayout(stored: StoredMap, channels: TownChannel[]): TownLayout {
     const { map, images } = stored;
@@ -85,5 +86,6 @@ export function importedLayout(stored: StoredMap, channels: TownChannel[]): Town
         ? { x: spawnObject.x + (spawnObject.width ?? 0) / 2, y: spawnObject.y + (spawnObject.height ?? 0) / 2 }
         : { x: (map.width * map.tilewidth) / 2, y: (map.height * map.tileheight) / 2 };
 
-    return { map, rooms, spawn, images };
+    const labels = all.flatMap(({ o }) => (o.text?.text ? [{ text: o.text.text, x: o.x, y: o.y }] : []));
+    return labels.length ? { map, rooms, spawn, images, labels } : { map, rooms, spawn, images };
 }

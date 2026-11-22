@@ -8,10 +8,13 @@ export class AdminSettings extends TownFeature {
         return { setNotifyChannel: (client, channelId) => void this.setNotifyChannel(client, channelId) };
     }
 
-    /** 管理員一進小鎮就收到目前的設定，前端才顯示設定選單。 */
+    /** 管理員一進小鎮就收到目前的設定，前端才顯示設定選單；新伺服器還沒選過地圖時 mapChosen 是 false，前端跳出選地圖的畫面。 */
     onJoin(client: Client) {
         void this.isAdmin(client).then((admin) => {
-            if (admin) client.send("admin", { notifyChannel: this.town.townSettings.notifyChannel(this.town.guildId) ?? "" });
+            if (!admin) return;
+            const { townSettings, guildId } = this.town;
+            const mapChosen = townSettings.mapPlan(guildId) !== undefined || townSettings.customMap(guildId) !== undefined;
+            client.send("admin", { notifyChannel: townSettings.notifyChannel(guildId) ?? "", mapChosen });
         });
     }
 

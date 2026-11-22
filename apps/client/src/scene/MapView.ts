@@ -7,7 +7,7 @@ import { DEPTH } from "./look.js";
 /** 房間名稱最多顯示幾個字，太長的截斷。 */
 const ROOM_NAME_MAX = 10;
 
-/** 小鎮的地圖：圖塊、房間名稱，以及沒有 bot 之類的提示。頻道變動或管理員換地圖時整份重畫。遊戲桌在 TableLayer。 */
+/** 小鎮的地圖：圖塊、房間名稱、分區名稱，以及沒有 bot 之類的提示。頻道變動或管理員換地圖時整份重畫。遊戲桌在 TableLayer。 */
 export class MapView {
     /** 目前地圖的碰撞判斷（跟伺服器用同一份地圖資料算）；還沒收到地圖時是 undefined。 */
     walkable?: Walkable;
@@ -55,6 +55,14 @@ export class MapView {
                 .setDepth(DEPTH.roomName);
             this.objects.push(label);
             this.roomLabels.set(room.id, { label, text });
+        }
+
+        // 分區名稱（Discord 的分類，或 Claude 設計的分區）
+        for (const { text, x, y } of state.labels ?? []) {
+            const label = this.scene.add
+                .text(x, y, text, { fontSize: "8px", color: "#fff", resolution: 3, backgroundColor: "#4a2e1ccc", padding: { x: 3, y: 1 } })
+                .setDepth(DEPTH.roomName);
+            this.objects.push(label);
         }
 
         this.notice.textContent = state.notice ?? "";

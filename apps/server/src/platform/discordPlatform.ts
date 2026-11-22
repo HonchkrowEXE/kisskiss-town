@@ -8,6 +8,8 @@ export type RawChannel = TownChannel & {
     position: number;
     /** 所屬分類的位置；沒有分類是 null。 */
     categoryPosition: number | null;
+    /** 所屬分類的名稱（小鎮上的分區名稱）；沒有分類就不填。 */
+    category?: string;
 };
 
 /**
@@ -24,8 +26,11 @@ export function orderChannels(channels: RawChannel[]): TownChannel[] {
                 a.position - b.position ||
                 a.id.localeCompare(b.id),
         )
-        .map(({ id, name, kind }) => ({ id, name, kind }));
+        .map(({ id, name, kind, category }) => (category ? { id, name, kind, category } : { id, name, kind }));
 }
+
+/** 頻道事件停下來多久才重畫地圖（毫秒）。 */
+const CHANNEL_DEBOUNCE_MS = 500;
 
 /** 語音狀態需要的欄位，跟 discord.js 脫鉤，方便測試。 */
 export type RawVoiceState = {
@@ -256,12 +261,19 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
                     kind,
                     position: "position" in channel ? channel.position : 0,
                     categoryPosition: channel.parent?.position ?? null,
+                    category: channel.parent?.name,
                 });
             }
             return orderChannels(raw);
         },
 
-        onChannelsChanged(guildId, listener) {
+        onChannelsChanged(guildId, onChanged) {
+            // 大型伺服器的頻道事件常常一次來一大串（整理分類、語音頻道狀態），合併成最後一次再重畫
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const listener = () => {
+                clearTimeout(timer);
+                timer = setTimeout(onChanged, CHANNEL_DEBOUNCE_MS);
+            };
             // 改名時 discord.js 傳 (舊, 新)，兩個的 guildId 一樣，看第一個就好
             const onChannel = (channel: { guildId?: string }) => channel.guildId === guildId && listener();
             const onGuild = (guild: { id: string }) => guild.id === guildId && listener();
@@ -272,6 +284,7 @@ export function createDiscordPlatform(token: string | undefined, { messageConten
             client.on(Events.GuildDelete, onGuild);
             client.on(Events.GuildRoleUpdate, onRole);
             return () => {
+                clearTimeout(timer);
                 for (const event of CHANNEL_EVENTS) client.off(event as string, onChannel);
                 client.off(Events.GuildCreate, onGuild);
                 client.off(Events.GuildDelete, onGuild);
